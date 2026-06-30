@@ -1,0 +1,11 @@
+{
+  "model": "xrouter/auto",
+  "instructions": "Answer as an infrastructure product architect.",
+  "input": "Give a concise XRouter rollout plan for one engineering team.",
+  "max_output_tokens": 500,
+  "xrouter": {
+    "objective": "balanced",
+    "multi_model": "never",
+    "explain": true
+  }
+}

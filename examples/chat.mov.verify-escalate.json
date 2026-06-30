@@ -1,0 +1,7 @@
+{
+  "model": "xrouter/mov/verify-escalate",
+  "messages": [
+    {"role": "user", "content": "Solve this carefully: what edge cases should a prefix-cache router avoid?"}
+  ],
+  "temperature": 0.1
+}

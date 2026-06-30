@@ -1,0 +1,34 @@
+# Human-readable strategy sketch. The runnable config is JSON in config.example.json.
+routes:
+  gpt-4o-mini:
+    kind: direct_alias
+    target: openai-fast
+    no_prompt_rewrite: true
+
+  xrouter/auto:
+    kind: smart_router
+    objective: balanced
+    candidates: [openai-fast, or-auto, or-sonnet, openai-smart]
+    prefix_cache:
+      enabled: true
+      weight: 0.18
+    judge:
+      enabled: false
+      target: judge-small
+
+  xrouter/code/*:
+    kind: smart_router
+    match_prefixes: [xrouter/code/]
+    objective: quality
+    candidates: [or-sonnet, openai-smart, openai-fast]
+
+  xrouter/mov/parallel-synth:
+    kind: mov
+    flow: parallel_synthesize_v1
+    references: [openai-fast, or-sonnet]
+    aggregator: openai-smart
+
+  xrouter/mov/verify-escalate:
+    kind: mov
+    flow: verify_then_escalate_v1
+    candidates: [openai-fast, judge-small, openai-smart]

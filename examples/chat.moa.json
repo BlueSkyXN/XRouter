@@ -1,0 +1,6 @@
+{
+  "model": "xrouter/moa-balanced",
+  "messages": [
+    { "role": "user", "content": "Design a minimal but robust API gateway for LLM routing." }
+  ]
+}

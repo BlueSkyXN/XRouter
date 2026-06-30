@@ -1,0 +1,7 @@
+{
+  "model": "xrouter/mov/parallel-synth",
+  "messages": [
+    {"role": "user", "content": "Design a model gateway that supports direct alias, smart router, prefix-cache affinity, and MoA."}
+  ],
+  "temperature": 0.2
+}

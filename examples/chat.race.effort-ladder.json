@@ -1,0 +1,7 @@
+{
+  "model": "xrouter/race/effort-ladder",
+  "stream": false,
+  "messages": [
+    {"role": "user", "content": "Design a correctness proof and test strategy for a transactional outbox implementation."}
+  ]
+}

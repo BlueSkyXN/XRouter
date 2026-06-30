@@ -1,0 +1,10 @@
+{
+  "model": "xrouter/auto",
+  "messages": [
+    {"role": "user", "content": "Answer using the explicitly selected upstream target."}
+  ],
+  "xrouter": {
+    "mode": "bypass",
+    "target": "or-cheap"
+  }
+}

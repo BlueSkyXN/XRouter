@@ -1,0 +1,192 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Existing git tag to release
+        required: true
+        type: string
+      draft:
+        description: Create the GitHub Release as a draft
+        required: true
+        default: true
+        type: boolean
+      prerelease:
+        description: Mark the GitHub Release as a prerelease
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CGO_ENABLED: "0"
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref }}
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.mod
+      - name: Format check
+        run: |
+          files="$(gofmt -l ./*.go)"
+          if [ -n "$files" ]; then
+            echo "$files"
+            exit 1
+          fi
+      - name: Vet
+        run: make vet
+      - name: Test
+        run: make test
+
+  binaries:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref }}
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.mod
+      - name: Build and package
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -euo pipefail
+          build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          pkg="xrouter_${RELEASE_TAG}_${GOOS}_${GOARCH}"
+          bin="xrouter"
+          if [ "$GOOS" = "windows" ]; then
+            bin="xrouter.exe"
+          fi
+          mkdir -p "dist/${pkg}"
+          go build -trimpath \
+            -ldflags="-s -w -X main.version=${RELEASE_TAG} -X main.commit=${GITHUB_SHA} -X main.date=${build_date}" \
+            -o "dist/${pkg}/${bin}" .
+          cp README.md LICENSE config.example.json "dist/${pkg}/"
+          cp -R docs examples "dist/${pkg}/"
+          if [ "$GOOS" = "windows" ]; then
+            (cd dist && zip -qr "${pkg}.zip" "${pkg}")
+          else
+            tar -C dist -czf "dist/${pkg}.tar.gz" "${pkg}"
+          fi
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: xrouter-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+          if-no-files-found: error
+
+  github-release:
+    name: Publish GitHub Release
+    needs:
+      - binaries
+      - container
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: xrouter-*
+          path: release
+          merge-multiple: true
+      - name: Generate checksums
+        run: |
+          cd release
+          sha256sum -- *.tar.gz *.zip > SHA256SUMS
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: XRouter ${{ env.RELEASE_TAG }}
+          draft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || false }}
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
+          generate_release_notes: true
+          files: |
+            release/*.tar.gz
+            release/*.zip
+            release/SHA256SUMS
+
+  container:
+    name: Publish GHCR image
+    needs: binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref }}
+      - name: Build metadata
+        id: meta_vars
+        run: |
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Docker metadata
+        id: docker_meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.meta_vars.outputs.image }}
+          tags: |
+            type=raw,value=${{ env.RELEASE_TAG }}
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.docker_meta.outputs.tags }}
+          labels: ${{ steps.docker_meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ env.RELEASE_TAG }}
+            COMMIT=${{ github.sha }}
+            DATE=${{ steps.meta_vars.outputs.date }}

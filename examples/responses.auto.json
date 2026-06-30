@@ -1,0 +1,6 @@
+{
+  "model": "xrouter/auto",
+  "instructions": "Answer as a terse systems architect.",
+  "input": "What should an LLM router cache and what should it never cache?",
+  "max_output_tokens": 500
+}

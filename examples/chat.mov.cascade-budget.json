@@ -1,0 +1,7 @@
+{
+  "model": "xrouter/mov/cascade-budget",
+  "messages": [
+    {"role": "user", "content": "Summarize the tradeoffs between cost-first and quality-first LLM routing."}
+  ],
+  "temperature": 0.2
+}

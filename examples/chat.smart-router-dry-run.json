@@ -1,0 +1,14 @@
+{
+  "model": "xrouter/auto",
+  "messages": [
+    {"role": "system", "content": "You are a concise infrastructure assistant."},
+    {"role": "user", "content": "Debug this Go data race and suggest a minimal patch."}
+  ],
+  "xrouter": {
+    "dry_run": true,
+    "explain": true,
+    "objective": "quality",
+    "cache_prefix_hint": "repo:acme/backend:main",
+    "multi_model": "never"
+  }
+}

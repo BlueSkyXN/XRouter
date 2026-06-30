@@ -1,0 +1,15 @@
+{
+  "model": "xrouter/auto",
+  "messages": [
+    {"role": "user", "content": "Debug this Go concurrency issue and give a patch."}
+  ],
+  "xrouter": {
+    "objective": "quality",
+    "candidates": ["openai-smart", "or-sonnet"],
+    "multi_model": "auto",
+    "shadow_targets": ["or-cheap"],
+    "listener_targets": ["or-cheap"],
+    "include_listener_output": true,
+    "session_id": "demo-session-001"
+  }
+}

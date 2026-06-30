@@ -1,0 +1,445 @@
+{
+  "server": {
+    "listen": ":8080",
+    "request_timeout_ms": 120000,
+    "read_header_timeout_ms": 10000,
+    "max_request_body_bytes": 33554432,
+    "debug": false
+  },
+  "auth": {
+    "api_keys_env": "XROUTER_API_KEYS",
+    "api_keys": []
+  },
+  "request_overrides": {
+    "enabled": true,
+    "allow_provider_key_override": true,
+    "max_shadow_targets": 4,
+    "max_listener_targets": 4
+  },
+  "routing": {
+    "unknown_model_policy": "reject",
+    "default_route": ""
+  },
+  "prefix_cache": {
+    "enabled": true,
+    "max_entries": 4096,
+    "ttl_seconds": 86400,
+    "prefix_chars": 4096,
+    "min_prefix_chars": 128,
+    "hash_salt": "replace-me-per-deployment",
+    "recency_half_life_seconds": 1800,
+    "update_from_usage": true
+  },
+  "providers": {
+    "openai": {
+      "base_url": "https://api.openai.com/v1",
+      "api_key_env": "OPENAI_API_KEY",
+      "headers": {},
+      "supports": [
+        "chat",
+        "responses"
+      ]
+    },
+    "openrouter": {
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "headers": {
+        "HTTP-Referer": "https://xrouter.local",
+        "X-OpenRouter-Title": "XRouter"
+      },
+      "supports": [
+        "chat"
+      ]
+    }
+  },
+  "targets": {
+    "openai-fast": {
+      "provider": "openai",
+      "model": "gpt-4.1-mini",
+      "quality": 0.72,
+      "cost_in": 0.4,
+      "cost_out": 1.6,
+      "latency_ms": 900,
+      "reliability": 0.98,
+      "cache_support_score": 0.8,
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "json": true,
+        "responses": true
+      },
+      "tags": [
+        "fast",
+        "cheap",
+        "general"
+      ]
+    },
+    "openai-smart": {
+      "provider": "openai",
+      "model": "gpt-5.5",
+      "quality": 0.96,
+      "cost_in": 5.0,
+      "cost_out": 15.0,
+      "latency_ms": 2600,
+      "reliability": 0.96,
+      "cache_support_score": 0.7,
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "json": true,
+        "responses": true
+      },
+      "tags": [
+        "smart",
+        "reasoning",
+        "code"
+      ]
+    },
+    "or-auto": {
+      "provider": "openrouter",
+      "model": "openrouter/auto",
+      "quality": 0.84,
+      "cost_in": 2.0,
+      "cost_out": 6.0,
+      "latency_ms": 1800,
+      "reliability": 0.95,
+      "cache_support_score": 0.9,
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "json": true,
+        "responses": false
+      },
+      "tags": [
+        "auto",
+        "openrouter"
+      ]
+    },
+    "or-sonnet": {
+      "provider": "openrouter",
+      "model": "anthropic/claude-sonnet-4",
+      "quality": 0.92,
+      "cost_in": 3.0,
+      "cost_out": 15.0,
+      "latency_ms": 2200,
+      "reliability": 0.94,
+      "cache_support_score": 0.85,
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "json": true,
+        "responses": false
+      },
+      "tags": [
+        "smart",
+        "code",
+        "analysis"
+      ]
+    },
+    "judge-small": {
+      "provider": "openai",
+      "model": "gpt-4.1-mini",
+      "quality": 0.7,
+      "cost_in": 0.4,
+      "cost_out": 1.6,
+      "latency_ms": 700,
+      "reliability": 0.98,
+      "cache_support_score": 0.4,
+      "capabilities": {
+        "tools": false,
+        "vision": false,
+        "json": true,
+        "responses": true
+      },
+      "tags": [
+        "judge",
+        "cheap"
+      ]
+    }
+  },
+  "routes": {
+    "gpt-4o-mini": {
+      "kind": "direct_alias",
+      "target": "openai-fast",
+      "fallbacks": [
+        "or-auto"
+      ]
+    },
+    "xrouter/auto": {
+      "kind": "smart_router",
+      "objective": "balanced",
+      "multi_model": "auto",
+      "moa_route": "xrouter/mov/parallel-synth",
+      "moa_complexity_threshold": 0.72,
+      "candidates": [
+        "openai-fast",
+        "or-auto",
+        "or-sonnet",
+        "openai-smart"
+      ],
+      "weights": {
+        "quality": 0.3,
+        "cost": 0.18,
+        "latency": 0.14,
+        "reliability": 0.16,
+        "capability": 0.1,
+        "cache": 0.08,
+        "sticky": 0.02,
+        "judge": 0.02
+      },
+      "prefix_cache": {
+        "enabled": true,
+        "weight": 0.18
+      },
+      "keyword_rules": [
+        {
+          "name": "code",
+          "any": [
+            "```",
+            "debug",
+            "rust",
+            "golang",
+            "typescript"
+          ],
+          "tags": [
+            "code"
+          ],
+          "boost": 0.12
+        },
+        {
+          "name": "cheap-general",
+          "any": [
+            "summarize",
+            "rewrite",
+            "translate"
+          ],
+          "tags": [
+            "cheap"
+          ],
+          "boost": 0.08
+        }
+      ],
+      "judge": {
+        "enabled": false,
+        "target": "judge-small",
+        "timeout_ms": 1200,
+        "weight": 0.2
+      }
+    },
+    "xrouter/code/*": {
+      "kind": "smart_router",
+      "match_prefixes": [
+        "xrouter/code/"
+      ],
+      "objective": "quality",
+      "multi_model": "auto",
+      "moa_route": "xrouter/mov/propose-critique-revise",
+      "moa_complexity_threshold": 0.62,
+      "candidates": [
+        "or-sonnet",
+        "openai-smart",
+        "openai-fast"
+      ],
+      "keyword_rules": [
+        {
+          "name": "code-heavy",
+          "any": [
+            "debug",
+            "panic",
+            "lifetime",
+            "race",
+            "deadlock",
+            "security"
+          ],
+          "tags": [
+            "code"
+          ],
+          "boost": 0.2
+        }
+      ],
+      "prefix_cache": {
+        "enabled": true,
+        "weight": 0.24
+      }
+    },
+    "xrouter/mov/parallel-synth": {
+      "kind": "mov",
+      "flow": "parallel_synthesize_v1",
+      "references": [
+        "openai-fast",
+        "or-sonnet"
+      ],
+      "aggregator": "openai-smart",
+      "parallelism": 2,
+      "allow_partial": true,
+      "reference_prompt": "Give an independent answer. Prefer concise evidence and call out uncertainty.",
+      "synthesis_prompt": "Synthesize the references into one final answer. Resolve conflicts explicitly."
+    },
+    "xrouter/mov/judge-select": {
+      "kind": "mov",
+      "flow": "parallel_judge_select_v1",
+      "candidates": [
+        "openai-fast",
+        "or-sonnet",
+        "openai-smart"
+      ],
+      "aggregator": "judge-small",
+      "allow_partial": true
+    },
+    "xrouter/mov/best-of-n": {
+      "kind": "mov",
+      "flow": "best_of_n_self_consistency_v1",
+      "target": "openai-smart",
+      "aggregator": "openai-smart",
+      "parallelism": 3
+    },
+    "xrouter/mov/propose-critique-revise": {
+      "kind": "mov",
+      "flow": "propose_critique_revise_v1",
+      "candidates": [
+        "openai-fast",
+        "or-sonnet",
+        "openai-smart"
+      ],
+      "aggregator": "openai-smart"
+    },
+    "xrouter/mov/serial-chain": {
+      "kind": "mov",
+      "flow": "serial_chain_relay_v1",
+      "candidates": [
+        "openai-fast",
+        "or-sonnet"
+      ],
+      "aggregator": "openai-smart"
+    },
+    "xrouter/mov/map-reduce": {
+      "kind": "mov",
+      "flow": "map_reduce_specialists_v1",
+      "references": [
+        "openai-fast",
+        "or-sonnet"
+      ],
+      "aggregator": "openai-smart"
+    },
+    "xrouter/mov/verify-escalate": {
+      "kind": "mov",
+      "flow": "verify_then_escalate_v1",
+      "candidates": [
+        "openai-fast",
+        "judge-small",
+        "openai-smart"
+      ],
+      "aggregator": "openai-smart",
+      "judge": {
+        "target": "judge-small"
+      }
+    },
+    "xrouter/mov/cascade-budget": {
+      "kind": "mov",
+      "flow": "cascade_budget_v1",
+      "candidates": [
+        "openai-fast",
+        "or-auto",
+        "openai-smart"
+      ]
+    },
+    "xrouter/mov/dual-path-tool": {
+      "kind": "mov",
+      "flow": "dual_path_tool_acting_v1",
+      "target": "openai-smart",
+      "serial_listeners": [
+        {
+          "name": "cheap-reviewer",
+          "target": "openai-fast",
+          "include_response": false,
+          "sample_rate": 0.2
+        }
+      ]
+    },
+    "xrouter/mov/shadow-eval": {
+      "kind": "mov",
+      "flow": "shadow_evaluation_v1",
+      "target": "openai-fast",
+      "shadow_targets": [
+        "or-sonnet",
+        "openai-smart"
+      ]
+    },
+    "xrouter/race/max-output": {
+      "kind": "mov",
+      "flow": "parallel_race_max_output_v1",
+      "candidates": [
+        "openai-smart"
+      ],
+      "parallelism": 2,
+      "race": {
+        "selection": "max_output",
+        "replicas": 2,
+        "visible_weight": 1.0,
+        "output_weight": 0.2,
+        "include_debug": true
+      }
+    },
+    "xrouter/race/boundary-guard": {
+      "kind": "mov",
+      "flow": "boundary_guard_race_v1",
+      "candidates": [
+        "openai-smart",
+        "or-sonnet"
+      ],
+      "parallelism": 2,
+      "race": {
+        "selection": "boundary_aware",
+        "replicas": 1,
+        "boundary_start": 516,
+        "boundary_step": 518,
+        "boundary_tolerance": 0,
+        "boundary_penalty": 2500,
+        "reasoning_weight": 0.05,
+        "visible_weight": 1.0,
+        "output_weight": 0.2,
+        "include_debug": true
+      }
+    },
+    "xrouter/race/effort-ladder": {
+      "kind": "mov",
+      "flow": "effort_ladder_race_v1",
+      "target": "openai-smart",
+      "parallelism": 3,
+      "race": {
+        "selection": "boundary_aware",
+        "efforts": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "boundary_start": 516,
+        "boundary_step": 518,
+        "boundary_tolerance": 0,
+        "boundary_penalty": 2500,
+        "visible_weight": 1.0,
+        "output_weight": 0.2,
+        "reasoning_weight": 0.05,
+        "include_debug": true
+      }
+    },
+    "xrouter/race/serial-escalate": {
+      "kind": "mov",
+      "flow": "serial_boundary_escalate_v1",
+      "target": "openai-smart",
+      "fallbacks": [
+        "or-sonnet",
+        "openai-smart"
+      ],
+      "race": {
+        "selection": "boundary_aware",
+        "boundary_start": 516,
+        "boundary_step": 518,
+        "boundary_tolerance": 0,
+        "boundary_penalty": 2500,
+        "min_visible_tokens": 120,
+        "include_debug": true
+      }
+    }
+  }
+}
