@@ -31,6 +31,7 @@ Use this file as the deployment baseline, then create an environment-specific co
   "request_timeout_ms": 120000,
   "read_header_timeout_ms": 10000,
   "max_request_body_bytes": 33554432,
+  "max_upstream_body_bytes": 67108864,
   "debug": false
 }
 ```
@@ -38,9 +39,10 @@ Use this file as the deployment baseline, then create an environment-specific co
 | Field | Meaning |
 |---|---|
 | `listen` | Go `net/http` listen address. |
-| `request_timeout_ms` | Default upstream client timeout. |
+| `request_timeout_ms` | Non-streaming upstream client timeout and streaming response-header timeout. Streaming response bodies are not cut off by this global timeout. |
 | `read_header_timeout_ms` | HTTP server read-header timeout. |
 | `max_request_body_bytes` | Maximum JSON request body size for API handlers. |
+| `max_upstream_body_bytes` | Maximum non-streaming upstream response body size. Exceeding this fails the attempt instead of buffering unbounded data. |
 | `debug` | Enables more verbose local behavior where implemented. |
 
 ## Auth
@@ -145,6 +147,8 @@ Supported unknown-model policies:
 
 Passthrough is explicit. With `reject`, slash-style model IDs such as `anthropic/claude-...` are not auto-forwarded. With `passthrough_openai`, even slash-style IDs use the `openai` provider; with `passthrough_openrouter`, plain IDs also use the `openrouter` provider.
 
+Route target references still validate configured target names. Under a passthrough policy, only explicit provider/model-style references such as `anthropic/claude-...` are treated as passthrough; plain typos like `opnai-smart` fail startup validation.
+
 ## Route kinds
 
 ### `direct_alias`
@@ -192,6 +196,8 @@ Selects exactly one target using filters and scoring.
 ```
 
 Capability filters for tools, JSON output, and vision are hard filters. If every configured candidate is incompatible with the request, XRouter returns a route error instead of falling back to an incompatible target.
+
+The smart router also folds recent in-memory target health into scoring. Repeated retryable failures temporarily demote a target behind other compatible candidates, while keeping it available as a later fallback.
 
 ### Prefix route
 
@@ -245,6 +251,10 @@ Race strategies are configured as MoV routes with a `race` block.
 ```
 
 When `parallelism` is omitted or set to `0`, XRouter runs all reference or race attempts for that route concurrently, up to the number of work items. Set `parallelism` explicitly to cap concurrency.
+
+For `race.selection: "fastest_acceptable"`, the first successful, non-degraded attempt returns immediately and cancels remaining in-flight attempts. Boundary-aware and max-output selections still wait for all attempts because their scoring needs comparison data.
+
+`cascade_budget_v1` evaluates each step with observable quality gates before escalating: successful HTTP status, non-incomplete finish reason, optional `race.min_visible_tokens`, and JSON parseability when the request asks for JSON output.
 
 ## Request-level overrides
 
@@ -322,3 +332,5 @@ curl http://127.0.0.1:8080/v1/chat/completions \
 `LoadConfig` validates configuration before the server starts. It checks provider URLs and declared endpoint support, target provider/model references, route target/fallback/listener/judge/race references, default route references, MoA requirements, supported MoV flows, and passthrough route provider policy.
 
 This is intentionally stricter than request-time routing: common deployment mistakes should fail fast during startup rather than on the first live request.
+
+`serial_listeners[].mode` currently supports only `serial`; unknown modes fail validation instead of being silently skipped.

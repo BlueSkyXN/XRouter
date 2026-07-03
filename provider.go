@@ -13,6 +13,8 @@ import (
 	"time"
 )
 
+const internalReasoningEffortKey = "_xrouter_internal_reasoning_effort"
+
 func (s *Server) targetByName(name string) (TargetConfig, bool) {
 	if t, ok := s.configuredTargetByName(name); ok {
 		return t, true
@@ -109,9 +111,9 @@ func (s *Server) callTargetBytes(ctx context.Context, targetName string, kind AP
 		return UpstreamResult{TargetName: targetName, Target: target, Status: 0, Duration: time.Since(start), Err: err}
 	}
 	defer resp.Body.Close()
-	data, readErr := io.ReadAll(resp.Body)
+	data, readErr := readLimitedResponseBody(resp.Body, s.cfg.Server.MaxUpstreamBodyBytes)
 	if readErr != nil {
-		return UpstreamResult{TargetName: targetName, Target: target, Status: resp.StatusCode, Headers: flattenHeaders(resp.Header), Body: data, Duration: time.Since(start), Err: readErr}
+		return UpstreamResult{TargetName: targetName, Target: target, Status: 0, Headers: flattenHeaders(resp.Header), Duration: time.Since(start), Err: readErr}
 	}
 	return UpstreamResult{TargetName: targetName, Target: target, Status: resp.StatusCode, Headers: flattenHeaders(resp.Header), Body: data, Duration: time.Since(start)}
 }
@@ -149,22 +151,25 @@ func (s *Server) streamTarget(ctx context.Context, w http.ResponseWriter, target
 	}
 	defer resp.Body.Close()
 	if retryableStatus(resp.StatusCode) {
-		data, _ := io.ReadAll(resp.Body)
+		data, _ := readLimitedResponseBody(resp.Body, s.cfg.Server.MaxUpstreamBodyBytes)
 		return UpstreamResult{TargetName: targetName, Target: target, Status: resp.StatusCode, Headers: flattenHeaders(resp.Header), Body: data, Duration: time.Since(start)}
 	}
 	copyResponseHeaders(w, resp.Header)
 	w.Header().Set("x-xrouter-target", targetName)
 	w.Header().Set("x-xrouter-upstream-model", target.Model)
 	w.WriteHeader(resp.StatusCode)
-	_, copyErr := io.Copy(w, resp.Body)
+	writer := io.Writer(w)
 	if f, ok := w.(http.Flusher); ok {
-		f.Flush()
+		writer = flushWriter{w: w, f: f}
 	}
+	_, copyErr := io.Copy(writer, resp.Body)
 	return UpstreamResult{TargetName: targetName, Target: target, Status: resp.StatusCode, Headers: flattenHeaders(resp.Header), Duration: time.Since(start), Wrote: true, Err: copyErr}
 }
 
 func prepareBodyForTarget(body map[string]any, target TargetConfig, provider ProviderConfig, kind APIKind) map[string]any {
-	up := cloneJSONMap(body)
+	up := cloneTopLevelJSONMap(body)
+	translateInternalReasoning := boolFromAny(up[internalReasoningEffortKey])
+	delete(up, internalReasoningEffortKey)
 	delete(up, "xrouter")
 	for k, v := range target.ExtraBody {
 		up[k] = v
@@ -184,7 +189,49 @@ func prepareBodyForTarget(body map[string]any, target TargetConfig, provider Pro
 		delete(up, "previous_response_id")
 		delete(up, "max_output_tokens")
 	}
+	translateBodyForProvider(up, target, translateInternalReasoning)
 	return up
+}
+
+func translateBodyForProvider(body map[string]any, target TargetConfig, translateInternalReasoning bool) {
+	if target.Provider != "openai" || !translateInternalReasoning {
+		return
+	}
+	reasoning, ok := body["reasoning"].(map[string]any)
+	if !ok {
+		return
+	}
+	if effort := strings.TrimSpace(stringFromAny(reasoning["effort"])); effort != "" {
+		body["reasoning_effort"] = effort
+	}
+	delete(body, "reasoning")
+}
+
+func readLimitedResponseBody(r io.Reader, maxBytes int64) ([]byte, error) {
+	if maxBytes <= 0 {
+		return io.ReadAll(r)
+	}
+	data, err := io.ReadAll(io.LimitReader(r, maxBytes+1))
+	if err != nil {
+		return data, fmt.Errorf("read upstream response: %w", err)
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("upstream response exceeded max_upstream_body_bytes (%d)", maxBytes)
+	}
+	return data, nil
+}
+
+type flushWriter struct {
+	w io.Writer
+	f http.Flusher
+}
+
+func (fw flushWriter) Write(p []byte) (int, error) {
+	n, err := fw.w.Write(p)
+	if fw.f != nil {
+		fw.f.Flush()
+	}
+	return n, err
 }
 
 func applyProviderHeaders(req *http.Request, provider ProviderConfig, target TargetConfig, incoming *http.Request, body map[string]any, allowKeyOverride bool) {
@@ -236,7 +283,7 @@ func copyResponseHeaders(w http.ResponseWriter, h http.Header) {
 		"Upgrade":             {},
 	}
 	for k, vals := range h {
-		if _, skip := blocked[k]; skip {
+		if _, skip := blocked[k]; skip || isHopByHopHeader(k) {
 			continue
 		}
 		for _, v := range vals {

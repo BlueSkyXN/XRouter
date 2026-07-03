@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -96,5 +97,68 @@ func TestProviderKeyOverrideAllowsHeaderAndBodyWhenEnabled(t *testing.T) {
 	}
 	if auths[1] != "Bearer body-key" {
 		t.Fatalf("expected body override, got %q", auths[1])
+	}
+}
+
+func TestUpstreamResponseBodyLimitReturnsReadError(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"too":"large"}`))
+	}))
+	defer upstream.Close()
+
+	cfg := Config{
+		Server: ServerConfig{MaxUpstreamBodyBytes: 4},
+		Providers: map[string]ProviderConfig{
+			"p": {BaseURL: upstream.URL, Supports: []string{"chat"}},
+		},
+		Targets: map[string]TargetConfig{
+			"t": {Provider: "p", Model: "m"},
+		},
+	}
+	cfg.applyDefaults()
+	s := NewServer(cfg)
+	body := map[string]any{"model": "xrouter/t", "messages": []any{map[string]any{"role": "user", "content": "hi"}}}
+	res := s.callTargetBytes(httptest.NewRequest("POST", "/", nil).Context(), "t", APIChat, body, nil)
+	if res.Err == nil || res.Status != 0 {
+		t.Fatalf("expected size-limit read error with status 0, got status=%d err=%v", res.Status, res.Err)
+	}
+}
+
+func TestReadLimitedResponseBodyAllowsExactLimit(t *testing.T) {
+	data, err := readLimitedResponseBody(strings.NewReader("1234"), 4)
+	if err != nil || string(data) != "1234" {
+		t.Fatalf("expected exact limit to pass, got %q err=%v", string(data), err)
+	}
+	if _, err := readLimitedResponseBody(strings.NewReader("12345"), 4); err == nil {
+		t.Fatal("expected over-limit body to fail")
+	}
+}
+
+func TestPrepareBodyTranslatesOnlyInternalOpenAIReasoningEffort(t *testing.T) {
+	body := map[string]any{
+		"model":     "xrouter/race",
+		"reasoning": map[string]any{"effort": "high"},
+		"messages":  []any{map[string]any{"role": "user", "content": "hi"}},
+	}
+	up := prepareBodyForTarget(body, TargetConfig{Provider: "openai", Model: "gpt"}, ProviderConfig{}, APIChat)
+	if _, ok := up["reasoning"].(map[string]any); !ok || up["reasoning_effort"] != nil {
+		t.Fatalf("direct OpenAI body should preserve user reasoning params without translation, got %#v", up)
+	}
+	internal := cloneTopLevelJSONMap(body)
+	internal[internalReasoningEffortKey] = true
+	up = prepareBodyForTarget(internal, TargetConfig{Provider: "openai", Model: "gpt"}, ProviderConfig{}, APIChat)
+	if up["reasoning_effort"] != "high" {
+		t.Fatalf("expected internal reasoning_effort=high, got %#v", up["reasoning_effort"])
+	}
+	if _, ok := up["reasoning"]; ok {
+		t.Fatalf("expected internal OpenAI reasoning object to be translated away, got %#v", up["reasoning"])
+	}
+	if _, ok := up[internalReasoningEffortKey]; ok {
+		t.Fatalf("internal translation marker leaked upstream: %#v", up)
+	}
+	or := prepareBodyForTarget(body, TargetConfig{Provider: "openrouter", Model: "or-model"}, ProviderConfig{}, APIChat)
+	if _, ok := or["reasoning"].(map[string]any); !ok {
+		t.Fatalf("expected non-OpenAI reasoning object to be preserved, got %#v", or["reasoning"])
 	}
 }

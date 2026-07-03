@@ -130,6 +130,8 @@ flowchart TD
 
 Use for: reasoning, architecture, open-ended synthesis.
 
+Reference outputs are passed to the aggregator as delimited user-role context, while the synthesis instruction stays in the system role. This keeps advisory model output lower privilege than configured router instructions.
+
 ### 2. Parallel judge select
 
 ```mermaid
@@ -147,7 +149,7 @@ Use for: answer quality tournaments, style variants, safety-sensitive answer sel
 
 ### 3. Best-of-N self-consistency
 
-Runs the same or similar targets multiple times, then selects the most consistent answer.
+Runs the same or similar targets multiple times with sampling diversity, then selects or synthesizes the most consistent answer.
 
 Use for: math, short reasoning, deterministic verification.
 
@@ -191,6 +193,8 @@ cheap -> mid -> strong
 
 Use for: low-cost default with escalation on failure/weak output.
 
+The cascade gate uses observable response signals only: HTTP success, incomplete/length finish reasons, optional visible-output threshold, and JSON parseability when the request asks for JSON.
+
 ### 9. Dual-path tool acting
 
 One model acts and can use tools; another reviews the primary answer.
@@ -215,5 +219,6 @@ XRouter v5 keeps a `race` strategy family for provider/runtime anomalies such as
 | `serial_boundary_escalate_v1` | Run primary first; escalate only when primary is incomplete, too short, or boundary-hit. |
 
 The default boundary sequence is `516 + 518(n-1)`, but both start and step are route-level config values.
+For `race.selection: fastest_acceptable`, XRouter returns the first successful non-degraded attempt and cancels remaining attempts; comparison-based selections still wait for all results.
 
 See `docs/DEGRADATION_GUARD_AND_RACE.md` for formulas and Mermaid diagrams.

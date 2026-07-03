@@ -15,6 +15,7 @@ type PrefixCacheStore struct {
 	mu      sync.Mutex
 	cfg     PrefixCacheConfig
 	entries map[string]map[string]*PrefixCacheEntry
+	count   int
 }
 
 type PrefixCacheEntry struct {
@@ -92,6 +93,10 @@ func (p *PrefixCacheStore) Scores(key string, candidates []string, targets map[s
 		age := now.Sub(entry.LastSeen)
 		if age > ttl {
 			delete(bucket, name)
+			p.count--
+			if len(bucket) == 0 {
+				delete(p.entries, key)
+			}
 			continue
 		}
 		recency := math.Pow(0.5, age.Seconds()/half)
@@ -119,6 +124,7 @@ func (p *PrefixCacheStore) Touch(key, targetName string, target TargetConfig, ca
 	if entry == nil {
 		entry = &PrefixCacheEntry{Target: targetName, Provider: target.Provider}
 		p.entries[key][targetName] = entry
+		p.count++
 	}
 	entry.LastSeen = time.Now()
 	entry.Hits++
@@ -146,6 +152,9 @@ func (p *PrefixCacheStore) evictLocked() {
 	if max <= 0 {
 		max = 4096
 	}
+	if p.count <= max {
+		return
+	}
 	type pair struct {
 		key, target string
 		last        time.Time
@@ -157,11 +166,24 @@ func (p *PrefixCacheStore) evictLocked() {
 		}
 	}
 	if len(all) <= max {
+		p.count = len(all)
 		return
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].last.Before(all[j].last) })
-	for _, x := range all[:len(all)-max] {
+	over := len(all) - max
+	batch := max / 10
+	if batch < 1 {
+		batch = 1
+	}
+	if over < batch {
+		over = batch
+	}
+	if over > len(all) {
+		over = len(all)
+	}
+	for _, x := range all[:over] {
 		delete(p.entries[x.key], x.target)
+		p.count--
 		if len(p.entries[x.key]) == 0 {
 			delete(p.entries, x.key)
 		}

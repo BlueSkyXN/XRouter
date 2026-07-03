@@ -211,8 +211,8 @@ curl http://127.0.0.1:8080/v1/responses \
 request.model
   -> exact route match
   -> prefix route match
-  -> default route
   -> configured target ID
+  -> default route
   -> unknown model policy
   -> direct / smart_router / mov / moa / passthrough executor
 ```

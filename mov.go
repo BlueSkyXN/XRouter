@@ -283,6 +283,8 @@ func (s *Server) movVerifyThenEscalate(ctx context.Context, r *http.Request, bod
 		return primaryRes, nil
 	}
 	verifyBody := withSystem(body, "Verify the following answer. Return JSON only: {\"pass\":true|false,\"reason\":\"...\"}.\n\nANSWER:\n"+textFromResult(primaryRes))
+	verifyBody["response_format"] = map[string]any{"type": "json_object"}
+	verifyBody["temperature"] = 0
 	verifyRes := s.callTargetBytes(ctx, verifier, APIChat, verifyBody, r)
 	if verifyRes.Err == nil && verifyRes.Status >= 200 && verifyRes.Status < 300 && verificationPassed(textFromResult(verifyRes)) {
 		return primaryRes, nil
@@ -302,9 +304,16 @@ func (s *Server) movCascadeBudget(ctx context.Context, r *http.Request, body map
 	if len(chain) == 0 {
 		return UpstreamResult{}, fmt.Errorf("cascade_budget requires target/candidates")
 	}
-	d := decision
-	d.TargetNames = uniqueStrings(chain)
-	return s.callWithFallback(ctx, body, d, APIChat, r), nil
+	var last UpstreamResult
+	for _, target := range chain {
+		res := s.callTargetBytes(ctx, target, APIChat, body, r)
+		s.metrics.Record(decision.RouteName+"/cascade", target, res.Status, res.Duration)
+		last = res
+		if cascadeResultAcceptable(res, body, decision.Route.Race) {
+			return res, nil
+		}
+	}
+	return last, nil
 }
 
 func (s *Server) movDualPathToolActing(ctx context.Context, r *http.Request, body map[string]any, decision RouteDecision) (UpstreamResult, error) {
@@ -338,6 +347,11 @@ func (s *Server) askJudgeToSelect(ctx context.Context, r *http.Request, body map
 	}
 	var b strings.Builder
 	b.WriteString("Select the best candidate. Return JSON only: {\"target\":\"candidate-target\",\"reason\":\"...\"}.\n")
+	if original := strings.TrimSpace(requestText(body, APIChat)); original != "" {
+		b.WriteString("\nOriginal user request:\n")
+		b.WriteString(truncateRunes(original, 2000))
+		b.WriteString("\n")
+	}
 	for _, ref := range refs {
 		b.WriteString("\n[target=")
 		b.WriteString(ref.Target)
@@ -383,12 +397,50 @@ func syntheticChatResult(targetName, model, text, route string) UpstreamResult {
 }
 
 func withSystem(body map[string]any, prompt string) map[string]any {
-	out := cloneJSONMap(body)
+	out := cloneTopLevelJSONMap(body)
 	out["stream"] = false
 	delete(out, "xrouter")
 	msgs, _ := out["messages"].([]any)
 	out["messages"] = append([]any{map[string]any{"role": "system", "content": prompt}}, msgs...)
 	return out
+}
+
+func cascadeResultAcceptable(res UpstreamResult, body map[string]any, cfg RaceConfig) bool {
+	if !raceSucceeded(res) {
+		return false
+	}
+	metrics := metricsFromResult(res, cfg)
+	if raceLooksDegraded(metrics, cfg) {
+		return false
+	}
+	if requestNeedsJSON(body) && !resultContainsJSONContent(res) {
+		return false
+	}
+	return true
+}
+
+func resultContainsJSONContent(res UpstreamResult) bool {
+	text := strings.TrimSpace(textFromResult(res))
+	if text == "" {
+		text = strings.TrimSpace(string(res.Body))
+	}
+	return containsValidJSONObject(text)
+}
+
+func containsValidJSONObject(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	if json.Valid([]byte(text)) {
+		return true
+	}
+	start := strings.IndexByte(text, '{')
+	end := strings.LastIndexByte(text, '}')
+	if start < 0 || end < start {
+		return false
+	}
+	return json.Valid([]byte(text[start : end+1]))
 }
 
 func textFromResult(res UpstreamResult) string {

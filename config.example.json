@@ -4,6 +4,7 @@
     "request_timeout_ms": 120000,
     "read_header_timeout_ms": 10000,
     "max_request_body_bytes": 33554432,
+    "max_upstream_body_bytes": 67108864,
     "debug": false
   },
   "auth": {

@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
@@ -25,10 +28,27 @@ func main() {
 		Addr:              cfg.Server.Listen,
 		Handler:           srv.routes(),
 		ReadHeaderTimeout: time.Duration(cfg.Server.ReadHeaderTimeoutMS) * time.Millisecond,
+		IdleTimeout:       90 * time.Second,
 	}
 	log.Printf("xrouter listening on %s", cfg.Server.Listen)
-	if err := httpServer.ListenAndServe(); err != nil {
-		log.Fatal(err)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- httpServer.ListenAndServe()
+	}()
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	select {
+	case err := <-errCh:
+		if err != nil && err != http.ErrServerClosed {
+			log.Fatal(err)
+		}
+	case sig := <-stop:
+		log.Printf("xrouter shutting down after %s", sig)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := httpServer.Shutdown(ctx); err != nil {
+			log.Fatal(err)
+		}
 	}
 }
 

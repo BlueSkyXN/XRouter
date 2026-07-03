@@ -66,12 +66,13 @@ Dispatch order:
 1. exact route match
 2. configured prefix match
 3. wildcard route name ending in '*'
-4. default route
-5. configured target ID
+4. configured target ID
+5. default route
 6. unknown model policy
 ```
 
 Exact match always wins over prefix match. This prevents broad prefixes from accidentally hijacking fixed aliases.
+Configured target IDs are resolved before `routing.default_route`, so every target advertised by `/v1/models` remains directly reachable.
 
 Unknown model passthrough is controlled only by `unknown_model_policy`. The resolver does not infer provider choice from whether a model ID contains `/`.
 

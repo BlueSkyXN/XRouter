@@ -87,7 +87,7 @@ func buildJudgeRouterBody(body map[string]any, route RouteConfig, candidates []s
 		b.WriteString("\n")
 	}
 	b.WriteString("\nUser request text:\n")
-	b.WriteString(requestText(body, APIChat))
+	b.WriteString(truncateRunes(requestText(body, APIChat), 2000))
 	return map[string]any{
 		"model":           route.Judge.Target,
 		"stream":          false,

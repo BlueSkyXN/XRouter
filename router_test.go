@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -127,6 +128,158 @@ func TestUnknownModelPolicyPassthroughUsesExplicitProvider(t *testing.T) {
 	openrouterTarget, ok := openrouterServer.targetByName(openrouterDecision.TargetNames[0])
 	if !ok || openrouterTarget.Provider != "openrouter" {
 		t.Fatalf("expected explicit OpenRouter passthrough, got target=%+v ok=%v", openrouterTarget, ok)
+	}
+}
+
+func TestConfiguredTargetBeatsDefaultRoute(t *testing.T) {
+	cfg := Config{
+		Routing: RoutingConfig{DefaultRoute: "xrouter/default"},
+		Providers: map[string]ProviderConfig{
+			"p": {BaseURL: "http://example.invalid/v1", Supports: []string{"chat"}},
+		},
+		Targets: map[string]TargetConfig{
+			"target-id":      {Provider: "p", Model: "target-model"},
+			"default-target": {Provider: "p", Model: "default-model"},
+		},
+		Routes: map[string]RouteConfig{
+			"xrouter/default": {Type: "direct", Target: "default-target"},
+		},
+	}
+	cfg.applyDefaults()
+	s := NewServer(cfg)
+	body := map[string]any{"model": "target-id", "messages": []any{map[string]any{"role": "user", "content": "hi"}}}
+	decision, err := s.resolve("target-id", body, APIChat, httptest.NewRequest("POST", "/", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.RouteName != "target-id" || len(decision.TargetNames) != 1 || decision.TargetNames[0] != "target-id" {
+		t.Fatalf("expected exact configured target, got %+v", decision)
+	}
+}
+
+func TestPrefixTieBreaksDeterministicallyByRouteName(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"p": {BaseURL: "http://example.invalid/v1", Supports: []string{"chat"}},
+		},
+		Targets: map[string]TargetConfig{
+			"a": {Provider: "p", Model: "a"},
+			"b": {Provider: "p", Model: "b"},
+		},
+		Routes: map[string]RouteConfig{
+			"xrouter/z/*": {Type: "direct", MatchPrefixes: []string{"same/"}, Target: "b"},
+			"xrouter/a/*": {Type: "direct", MatchPrefixes: []string{"same/"}, Target: "a"},
+		},
+	}
+	cfg.applyDefaults()
+	s := NewServer(cfg)
+	_, name, ok := s.resolveRouteByModelID("same/model")
+	if !ok || name != "xrouter/a/*" {
+		t.Fatalf("expected lexicographically first equal-prefix route, got name=%q ok=%v", name, ok)
+	}
+}
+
+func TestHandleModelsDeduplicatesRouteAndTargetIDs(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"p": {BaseURL: "http://example.invalid/v1", Supports: []string{"chat"}},
+		},
+		Targets: map[string]TargetConfig{
+			"same-id": {Provider: "p", Model: "upstream"},
+		},
+		Routes: map[string]RouteConfig{
+			"same-id": {Type: "direct", Target: "same-id"},
+		},
+	}
+	cfg.applyDefaults()
+	s := NewServer(cfg)
+	rec := httptest.NewRecorder()
+	s.handleModels(rec, httptest.NewRequest("GET", "/v1/models", nil))
+	var obj struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if len(obj.Data) != 1 || obj.Data[0].ID != "same-id" {
+		t.Fatalf("expected one same-id model, got %+v", obj.Data)
+	}
+}
+
+func TestReadJSONBodyRejectsTrailingGarbage(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"p": {BaseURL: "http://example.invalid/v1", Supports: []string{"chat"}},
+		},
+		Targets: map[string]TargetConfig{
+			"t": {Provider: "p", Model: "m"},
+		},
+		Routes: map[string]RouteConfig{
+			"xrouter/t": {Type: "direct", Target: "t"},
+		},
+	}
+	cfg.applyDefaults()
+	s := NewServer(cfg)
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(`{"model":"xrouter/t","messages":[]} trailing`))
+	rec := httptest.NewRecorder()
+	s.handleChat(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected trailing garbage to be rejected, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestExplainAttachesDecisionMetadata(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": "ok"}, "finish_reason": "stop"}}})
+	}))
+	defer upstream.Close()
+	cfg := Config{
+		RequestOverrides: RequestOverrideConfig{Enabled: true},
+		Providers: map[string]ProviderConfig{
+			"p": {BaseURL: upstream.URL, Supports: []string{"chat"}},
+		},
+		Targets: map[string]TargetConfig{
+			"t": {Provider: "p", Model: "m"},
+		},
+		Routes: map[string]RouteConfig{
+			"xrouter/t": {Type: "direct", Target: "t"},
+		},
+	}
+	cfg.applyDefaults()
+	s := NewServer(cfg)
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(`{"model":"xrouter/t","messages":[],"xrouter":{"explain":true}}`))
+	rec := httptest.NewRecorder()
+	s.handleChat(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &obj); err != nil {
+		t.Fatal(err)
+	}
+	xr := obj["xrouter"].(map[string]any)
+	if xr["route"] != "xrouter/t" || xr["target"] != "t" || xr["execution_type"] != "direct" {
+		t.Fatalf("missing explain metadata: %+v", xr)
+	}
+}
+
+func TestWriteUpstreamResultFiltersHopByHopHeaders(t *testing.T) {
+	s := testServerForRouting()
+	rec := httptest.NewRecorder()
+	s.writeUpstreamResult(rec, RouteDecision{RouteName: "r", Route: RouteConfig{Type: "direct"}}, UpstreamResult{
+		TargetName: "t",
+		Target:     TargetConfig{Model: "m"},
+		Status:     http.StatusOK,
+		Headers:    map[string]string{"Keep-Alive": "timeout=5", "Upgrade": "websocket", "X-Test": "ok"},
+		Body:       []byte(`{"ok":true}`),
+	})
+	if rec.Header().Get("Keep-Alive") != "" || rec.Header().Get("Upgrade") != "" {
+		t.Fatalf("hop-by-hop headers leaked: %+v", rec.Header())
+	}
+	if rec.Header().Get("X-Test") != "ok" {
+		t.Fatalf("expected end-to-end header to remain, got %+v", rec.Header())
 	}
 }
 

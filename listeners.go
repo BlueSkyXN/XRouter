@@ -41,7 +41,7 @@ func (s *Server) launchShadowCalls(r *http.Request, body map[string]any, decisio
 			break
 		}
 		target := target
-		shadowBody := cloneJSONMap(body)
+		shadowBody := cloneTopLevelJSONMap(body)
 		shadowBody["stream"] = false
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -153,7 +153,7 @@ func buildListenerBody(original map[string]any, decision RouteDecision, kind API
 		prompt = defaultListenerPrompt()
 	}
 	content := fmt.Sprintf("%s\n\nAPI kind: %s\nRoute: %s\nPrimary target: %s\nPrimary upstream model: %s\n\nOriginal request JSON:\n%s\n\nPrimary response JSON:\n%s",
-		prompt, kind, decision.RouteName, primary.TargetName, primary.Target.Model, compactJSON(original), strings.TrimSpace(string(primary.Body)))
+		prompt, kind, decision.RouteName, primary.TargetName, primary.Target.Model, truncateRunes(compactJSON(original), 4000), truncateRunes(strings.TrimSpace(string(primary.Body)), 4000))
 	return map[string]any{
 		"model":       listener.Target,
 		"temperature": 0,

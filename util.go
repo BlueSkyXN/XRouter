@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -32,6 +33,13 @@ func readJSONBody(w http.ResponseWriter, r *http.Request, maxBytes int64) (map[s
 	dec.UseNumber()
 	var body map[string]any
 	if err := dec.Decode(&body); err != nil {
+		return nil, err
+	}
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return nil, fmt.Errorf("request body must contain a single JSON object")
+		}
 		return nil, err
 	}
 	if body == nil {
@@ -147,4 +155,24 @@ func uniqueStrings(in []string) []string {
 		out = append(out, s)
 	}
 	return out
+}
+
+func truncateRunes(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	rs := []rune(s)
+	if len(rs) <= max {
+		return s
+	}
+	return string(rs[:max]) + "\n[truncated]"
+}
+
+func isHopByHopHeader(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "content-length":
+		return true
+	default:
+		return false
+	}
 }

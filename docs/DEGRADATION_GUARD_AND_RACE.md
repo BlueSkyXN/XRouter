@@ -86,11 +86,13 @@ token_count.reasoning_output_tokens
 任意嵌套字段 reasoning_output_tokens
 ```
 
-拿不到 reasoning token 时，XRouter 会退化为可见输出长度 + usage output token 评分。
+拿不到 reasoning token 时，XRouter 会退化为可见输出长度 + usage output token 评分。可见输出估算会按 Unicode 文本分段处理：CJK 字符按接近 1 字符/token 估算，其他文本继续使用空格词数和约 4 字符/token 的保守估算。
 
 ## 4. 策略一：parallel_race_max_output_v1
 
 同一请求并行打多个 target 或同 target 多 replica，选择输出量最大的可用结果。
+
+如果显式配置 `race.selection: "fastest_acceptable"`，XRouter 会在第一个成功且未被判定为 degraded 的结果返回时取消其他 in-flight attempts。`max_output` 和 `boundary_aware` 等需要比较输出量或边界分数的选择策略仍会等待全部 attempts 完成。
 
 适用场景：
 

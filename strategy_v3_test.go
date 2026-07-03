@@ -1,8 +1,10 @@
 package main
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func testStrategyServer() *Server {
@@ -62,9 +64,39 @@ func TestPrefixCacheBookkeepingCanChangeSmartOrder(t *testing.T) {
 		t.Fatal("expected prefix key")
 	}
 	s.prefixBK.Touch(key, "cheap", s.cfg.Targets["cheap"], 4096)
-	ordered := s.routeCandidates(route, body, APIChat, "", r)
+	ordered := s.routeCandidates(route, body, APIChat, "", r, controls)
 	if len(ordered) == 0 || ordered[0] != "cheap" {
 		t.Fatalf("expected cache-affine cheap first, got %v", ordered)
+	}
+}
+
+func TestRuntimeFailuresDemoteCircuitOpenTarget(t *testing.T) {
+	s := testStrategyServer()
+	body := map[string]any{"model": "xrouter/auto", "messages": []any{map[string]any{"role": "user", "content": "solve a hard architecture problem"}}}
+	r := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	route := s.cfg.Routes["xrouter/auto"]
+	controls := s.controlsFromRequest(r, body)
+	before := s.routeCandidates(route, body, APIChat, "", r, controls)
+	if len(before) == 0 || before[0] != "smart" {
+		t.Fatalf("test setup expected smart first before failures, got %v", before)
+	}
+	for i := 0; i < circuitFailureThreshold; i++ {
+		s.metrics.Record("xrouter/auto", "smart", http.StatusBadGateway, 100*time.Millisecond)
+	}
+	after := s.routeCandidates(route, body, APIChat, "", r, controls)
+	if len(after) == 0 || after[0] != "cheap" {
+		t.Fatalf("expected circuit-open smart target to be demoted behind cheap, got %v", after)
+	}
+}
+
+func TestVisionDetectionUsesStructuredContentOnly(t *testing.T) {
+	textOnly := map[string]any{"messages": []any{map[string]any{"role": "user", "content": "please explain the image_url field"}}}
+	if requestNeedsVision(textOnly) {
+		t.Fatal("plain text mentioning image_url should not require vision")
+	}
+	vision := map[string]any{"messages": []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "image_url", "image_url": map[string]any{"url": "https://example.invalid/a.png"}}}}}}
+	if !requestNeedsVision(vision) {
+		t.Fatal("structured image_url content part should require vision")
 	}
 }
 

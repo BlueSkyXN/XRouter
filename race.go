@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -36,7 +37,9 @@ type raceMetrics struct {
 
 func (s *Server) movParallelRaceMaxOutput(ctx context.Context, r *http.Request, body map[string]any, decision RouteDecision) (UpstreamResult, error) {
 	route := decision.Route
-	route.Race.Selection = "max_output"
+	if strings.TrimSpace(route.Race.Selection) == "" {
+		route.Race.Selection = "max_output"
+	}
 	attempts := s.runRaceAttempts(ctx, r, body, route, decision.RouteName)
 	return selectRaceResult(attempts, route, decision.RouteName)
 }
@@ -108,6 +111,9 @@ func (s *Server) runRaceAttempts(ctx context.Context, r *http.Request, body map[
 	if len(plans) == 0 {
 		return nil
 	}
+	if strings.EqualFold(normalizeRaceSelection(route.Race.Selection), "fastest_acceptable") {
+		return s.runFastestAcceptableRaceAttempts(ctx, r, body, route, routeName, plans)
+	}
 	parallelism := effectiveParallelism(route.Parallelism, len(plans))
 	sem := make(chan struct{}, parallelism)
 	out := make([]raceAttempt, len(plans))
@@ -127,17 +133,71 @@ func (s *Server) runRaceAttempts(ctx context.Context, r *http.Request, body map[
 				out[i].Score = raceScore(out[i], route.Race)
 				return
 			}
-			variant := bodyWithRaceVariant(body, p.Effort)
-			res := s.callTargetBytes(ctx, p.Target, APIChat, variant, r)
-			s.metrics.Record(routeName+"/race", p.Target, res.Status, res.Duration)
-			out[i].Result = res
-			out[i].Metrics = metricsFromResult(res, route.Race)
-			out[i].Succeeded = raceSucceeded(res)
-			out[i].Score = raceScore(out[i], route.Race)
+			out[i] = s.runOneRaceAttempt(ctx, r, body, route, routeName, i, p)
 		}()
 	}
 	wg.Wait()
 	return out
+}
+
+func (s *Server) runFastestAcceptableRaceAttempts(ctx context.Context, r *http.Request, body map[string]any, route RouteConfig, routeName string, plans []racePlan) []raceAttempt {
+	raceCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	parallelism := effectiveParallelism(route.Parallelism, len(plans))
+	sem := make(chan struct{}, parallelism)
+	results := make(chan raceAttempt, len(plans))
+	for i, p := range plans {
+		i, p := i, p
+		go func() {
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-raceCtx.Done():
+				results <- canceledRaceAttempt(i, p, raceCtx.Err(), route.Race)
+				return
+			}
+			results <- s.runOneRaceAttempt(raceCtx, r, body, route, routeName, i, p)
+		}()
+	}
+	out := make([]raceAttempt, len(plans))
+	for i, p := range plans {
+		out[i] = raceAttempt{Index: i, Target: p.Target, Effort: p.Effort, Replica: p.Replica}
+	}
+	received := 0
+	for received < len(plans) {
+		att := <-results
+		received++
+		out[att.Index] = att
+		if att.Succeeded && !raceLooksDegraded(att.Metrics, route.Race) {
+			cancel()
+			for i, current := range out {
+				if current.Result.Err == nil && current.Result.Status == 0 && !current.Succeeded {
+					out[i] = canceledRaceAttempt(i, plans[i], context.Canceled, route.Race)
+				}
+			}
+			return out
+		}
+	}
+	return out
+}
+
+func (s *Server) runOneRaceAttempt(ctx context.Context, r *http.Request, body map[string]any, route RouteConfig, routeName string, index int, p racePlan) raceAttempt {
+	att := raceAttempt{Index: index, Target: p.Target, Effort: p.Effort, Replica: p.Replica}
+	variant := bodyWithRaceVariant(body, p.Effort)
+	res := s.callTargetBytes(ctx, p.Target, APIChat, variant, r)
+	s.metrics.Record(routeName+"/race", p.Target, res.Status, res.Duration)
+	att.Result = res
+	att.Metrics = metricsFromResult(res, route.Race)
+	att.Succeeded = raceSucceeded(res)
+	att.Score = raceScore(att, route.Race)
+	return att
+}
+
+func canceledRaceAttempt(index int, p racePlan, err error, cfg RaceConfig) raceAttempt {
+	att := raceAttempt{Index: index, Target: p.Target, Effort: p.Effort, Replica: p.Replica, Result: UpstreamResult{TargetName: p.Target, Status: 0, Err: err}}
+	att.Metrics = metricsFromResult(att.Result, cfg)
+	att.Score = raceScore(att, cfg)
+	return att
 }
 
 type racePlan struct {
@@ -176,7 +236,7 @@ func buildRacePlans(route RouteConfig) []racePlan {
 }
 
 func bodyWithRaceVariant(body map[string]any, effort string) map[string]any {
-	out := cloneJSONMap(body)
+	out := cloneTopLevelJSONMap(body)
 	out["stream"] = false
 	delete(out, "xrouter")
 	if strings.TrimSpace(effort) != "" {
@@ -188,6 +248,7 @@ func bodyWithRaceVariant(body map[string]any, effort string) map[string]any {
 			reasoning["effort"] = strings.TrimSpace(effort)
 		}
 		out["reasoning"] = reasoning
+		out[internalReasoningEffortKey] = true
 	}
 	return out
 }
@@ -346,7 +407,22 @@ func approxTokenCount(s string) int {
 	}
 	words := len(strings.Fields(s))
 	runes := utf8.RuneCountInString(s)
-	byChars := int(math.Ceil(float64(runes) / 4.0))
+	cjk := 0
+	other := 0
+	for _, r := range s {
+		if unicode.IsSpace(r) {
+			continue
+		}
+		if unicode.In(r, unicode.Han, unicode.Hangul, unicode.Hiragana, unicode.Katakana) {
+			cjk++
+		} else {
+			other++
+		}
+	}
+	byChars := cjk + int(math.Ceil(float64(other)/4.0))
+	if byChars <= 0 {
+		byChars = int(math.Ceil(float64(runes) / 4.0))
+	}
 	if words > byChars {
 		return words
 	}

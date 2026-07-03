@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 	"sort"
@@ -38,6 +39,10 @@ func NewServer(cfg Config) *Server {
 func upstreamTransport(responseHeaderTimeout time.Duration) *http.Transport {
 	t := http.DefaultTransport.(*http.Transport).Clone()
 	t.ResponseHeaderTimeout = responseHeaderTimeout
+	t.MaxIdleConns = 200
+	t.MaxIdleConnsPerHost = 100
+	t.IdleConnTimeout = 90 * time.Second
+	t.ForceAttemptHTTP2 = true
 	return t
 }
 
@@ -65,7 +70,7 @@ func (s *Server) withAuth(next http.HandlerFunc) http.HandlerFunc {
 			next(w, r)
 			return
 		}
-		if _, ok := s.apiKeys[bearerToken(r)]; !ok {
+		if !s.validAPIKey(bearerToken(r)) {
 			writeError(w, http.StatusUnauthorized, "unauthorized", "missing or invalid XRouter API key")
 			return
 		}
@@ -92,6 +97,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	for id := range s.cfg.Targets {
 		ids = append(ids, id)
 	}
+	ids = uniqueStrings(ids)
 	sort.Strings(ids)
 	data := make([]modelObj, 0, len(ids))
 	for _, id := range ids {
@@ -105,6 +111,18 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"object": "list", "data": data})
+}
+
+func (s *Server) validAPIKey(token string) bool {
+	if token == "" {
+		return false
+	}
+	for key := range s.apiKeys {
+		if subtle.ConstantTimeCompare([]byte(token), []byte(key)) == 1 {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) handlePrefixCacheSnapshot(w http.ResponseWriter, r *http.Request) {

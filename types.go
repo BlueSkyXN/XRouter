@@ -20,11 +20,12 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Listen              string `json:"listen"`
-	RequestTimeoutMS    int    `json:"request_timeout_ms"`
-	ReadHeaderTimeoutMS int    `json:"read_header_timeout_ms"`
-	MaxRequestBodyBytes int64  `json:"max_request_body_bytes"`
-	Debug               bool   `json:"debug"`
+	Listen               string `json:"listen"`
+	RequestTimeoutMS     int    `json:"request_timeout_ms"`
+	ReadHeaderTimeoutMS  int    `json:"read_header_timeout_ms"`
+	MaxRequestBodyBytes  int64  `json:"max_request_body_bytes"`
+	MaxUpstreamBodyBytes int64  `json:"max_upstream_body_bytes"`
+	Debug                bool   `json:"debug"`
 }
 
 type AuthConfig struct {
@@ -265,6 +266,9 @@ func (c *Config) applyDefaults() {
 	if c.Server.MaxRequestBodyBytes <= 0 {
 		c.Server.MaxRequestBodyBytes = 32 << 20
 	}
+	if c.Server.MaxUpstreamBodyBytes <= 0 {
+		c.Server.MaxUpstreamBodyBytes = 64 << 20
+	}
 	if c.RequestOverrides.MaxShadowTargets <= 0 {
 		c.RequestOverrides.MaxShadowTargets = 4
 	}
@@ -330,6 +334,7 @@ func (c *Config) applyDefaults() {
 		if r.SynthesisPrompt == "" {
 			r.SynthesisPrompt = "Synthesize the reference outputs into one final answer."
 		}
+		configuredJudgeWeight := r.Judge.Weight
 		r.Weights = defaultSmartWeights(r.Objective, r.Weights)
 		if r.PrefixCache.Weight <= 0 {
 			r.PrefixCache.Weight = 0.18
@@ -337,8 +342,10 @@ func (c *Config) applyDefaults() {
 		if r.Judge.TimeoutMS <= 0 {
 			r.Judge.TimeoutMS = 1200
 		}
-		if r.Judge.Weight <= 0 {
-			r.Judge.Weight = 0.35
+		if configuredJudgeWeight > 0 {
+			r.Weights.Judge = configuredJudgeWeight
+		} else {
+			r.Judge.Weight = r.Weights.Judge
 		}
 		r.Race = defaultRaceConfig(r.Race)
 		for i := range r.SerialListeners {
@@ -387,10 +394,7 @@ func effectiveParallelism(configured, workItems int) int {
 }
 
 func defaultRaceConfig(r RaceConfig) RaceConfig {
-	if r.Selection == "" {
-		r.Selection = "boundary_aware"
-	}
-	r.Selection = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(r.Selection, "-", "_")))
+	r.Selection = normalizeRaceSelection(r.Selection)
 	if r.Replicas <= 0 {
 		r.Replicas = 2
 	}
@@ -425,6 +429,10 @@ func defaultRaceConfig(r RaceConfig) RaceConfig {
 		r.LatencyWeight = 0
 	}
 	return r
+}
+
+func normalizeRaceSelection(selection string) string {
+	return strings.ToLower(strings.TrimSpace(strings.ReplaceAll(selection, "-", "_")))
 }
 
 func normalizeRouteKind(s string) string {
@@ -492,6 +500,17 @@ func cloneJSONMap(in map[string]any) map[string]any {
 	_ = dec.Decode(&out)
 	if out == nil {
 		out = map[string]any{}
+	}
+	return out
+}
+
+func cloneTopLevelJSONMap(in map[string]any) map[string]any {
+	if in == nil {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
 	}
 	return out
 }

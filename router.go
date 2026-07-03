@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
@@ -99,12 +100,6 @@ func (s *Server) resolve(model string, body map[string]any, kind APIKind, r *htt
 		return s.materializeRouteDecision(model, routeName, configured, body, kind, r, controls, complexity)
 	}
 
-	if s.cfg.Routing.DefaultRoute != "" {
-		if configured, ok := s.cfg.Routes[s.cfg.Routing.DefaultRoute]; ok {
-			return s.materializeRouteDecision(model, s.cfg.Routing.DefaultRoute, configured, body, kind, r, controls, complexity)
-		}
-	}
-
 	if _, ok := s.configuredTargetByName(lookup); ok {
 		return RouteDecision{
 			PublicModel: model,
@@ -115,6 +110,12 @@ func (s *Server) resolve(model string, body map[string]any, kind APIKind, r *htt
 			Controls:    controls,
 			Complexity:  complexity,
 		}, nil
+	}
+
+	if s.cfg.Routing.DefaultRoute != "" {
+		if configured, ok := s.cfg.Routes[s.cfg.Routing.DefaultRoute]; ok {
+			return s.materializeRouteDecision(model, s.cfg.Routing.DefaultRoute, configured, body, kind, r, controls, complexity)
+		}
 	}
 
 	switch normalizeUnknownModelPolicy(s.cfg.Routing.UnknownModelPolicy) {
@@ -151,7 +152,13 @@ func (s *Server) resolveRouteByModelID(modelID string) (RouteConfig, string, boo
 	bestName := ""
 	bestLen := -1
 	var best RouteConfig
-	for name, route := range s.cfg.Routes {
+	names := make([]string, 0, len(s.cfg.Routes))
+	for name := range s.cfg.Routes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		route := s.cfg.Routes[name]
 		prefixes := append([]string{}, route.MatchPrefixes...)
 		if strings.HasSuffix(name, "*") {
 			prefixes = append(prefixes, strings.TrimSuffix(name, "*"))
@@ -161,7 +168,7 @@ func (s *Server) resolveRouteByModelID(modelID string) (RouteConfig, string, boo
 			if prefix == "" {
 				continue
 			}
-			if strings.HasPrefix(modelID, prefix) && len(prefix) > bestLen {
+			if strings.HasPrefix(modelID, prefix) && (len(prefix) > bestLen || (len(prefix) == bestLen && (bestName == "" || name < bestName))) {
 				bestLen = len(prefix)
 				bestName = name
 				best = route
@@ -208,7 +215,7 @@ func (s *Server) materializeRouteDecision(model, routeName string, configured Ro
 			}
 		}
 		sid := sessionIDWithControls(r, body, controls)
-		decision.TargetNames = s.routeCandidates(route, body, kind, sid, r)
+		decision.TargetNames = s.routeCandidates(route, body, kind, sid, r, controls)
 	case "moa":
 		if route.Aggregator == "" || len(route.References) == 0 {
 			return decision, fmt.Errorf("moa route %q requires aggregator and references", routeName)
@@ -369,7 +376,7 @@ func (s *Server) callWithFallback(ctx context.Context, body map[string]any, deci
 
 func (s *Server) writeUpstreamResult(w http.ResponseWriter, decision RouteDecision, result UpstreamResult) {
 	for k, v := range result.Headers {
-		if strings.EqualFold(k, "Content-Length") || strings.EqualFold(k, "Transfer-Encoding") || strings.EqualFold(k, "Connection") {
+		if isHopByHopHeader(k) {
 			continue
 		}
 		w.Header().Set(k, v)
@@ -383,7 +390,18 @@ func (s *Server) writeUpstreamResult(w http.ResponseWriter, decision RouteDecisi
 	w.Header().Set("x-xrouter-execution-type", decision.Route.Type)
 	w.Header().Set("x-xrouter-complexity", fmt.Sprintf("%.3f", decision.Complexity))
 	w.WriteHeader(result.Status)
-	_, _ = w.Write(result.Body)
+	body := result.Body
+	if decision.Controls.Explain && result.Status >= 200 && result.Status < 300 {
+		body = attachXRouterMetadata(body, map[string]any{
+			"route":          decision.RouteName,
+			"target":         result.TargetName,
+			"upstream_model": result.Target.Model,
+			"execution_type": decision.Route.Type,
+			"complexity":     decision.Complexity,
+			"targets":        decision.TargetNames,
+		})
+	}
+	_, _ = w.Write(body)
 }
 
 func addXRouterBodyMetadata(raw []byte, route, target, upstreamModel string) []byte {

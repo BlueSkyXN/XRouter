@@ -164,8 +164,8 @@ reject
 3. exact model ID match
 4. prefix model ID match
 5. regex / glob match
-6. default route
-7. configured target ID
+6. configured target ID
+7. default route
 8. unknown_model_policy: reject / passthrough_openai / passthrough_openrouter
 ```
 
@@ -188,14 +188,18 @@ flowchart TD
     J -- yes --> K[Use longest-prefix route]
     J -- no --> L{Regex/glob match?}
     L -- yes --> M[Use pattern route]
-    L -- no --> N{Default policy?}
-    N -- configured target --> O[Use target ID directly]
-    N -- passthrough_openai/openrouter --> R[Pass through model ID to explicit provider]
-    N -- reject --> P[Return unknown model error]
+    L -- no --> N{Configured target ID?}
+    N -- yes --> O[Use target ID directly]
+    N -- no --> S{Default route?}
+    S -- yes --> T[Use default route]
+    S -- no --> U{Unknown model policy?}
+    U -- passthrough_openai/openrouter --> R[Pass through model ID to explicit provider]
+    U -- reject --> P[Return unknown model error]
     I --> Q[Execute strategy]
     K --> Q
     M --> Q
     O --> Q
+    T --> Q
     R --> Q
 ```
 

@@ -115,6 +115,9 @@ func (c Config) Validate() error {
 		c.validateTargetRefs(route.ShadowTargets, ctx+".shadow_targets", &problems)
 		for i, listener := range route.SerialListeners {
 			c.validateTargetRef(listener.Target, fmt.Sprintf("%s.serial_listeners[%d].target", ctx, i), &problems)
+			if listener.Mode != "" && listener.Mode != "serial" {
+				problems = append(problems, fmt.Sprintf("%s.serial_listeners[%d].mode has unsupported value %q", ctx, i, listener.Mode))
+			}
 		}
 		if route.Judge.Enabled {
 			c.validateTargetRef(route.Judge.Target, ctx+".judge.target", &problems)
@@ -140,6 +143,10 @@ func (c Config) validateTargetRef(name, context string, problems *[]string) {
 		return
 	}
 	if _, ok := c.Targets[name]; ok {
+		return
+	}
+	if !strings.Contains(name, "/") {
+		*problems = append(*problems, fmt.Sprintf("%s references missing target %q", context, name))
 		return
 	}
 	switch normalizeUnknownModelPolicy(c.Routing.UnknownModelPolicy) {

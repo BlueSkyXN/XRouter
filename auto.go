@@ -13,7 +13,16 @@ type scoredTarget struct {
 	Score float64
 }
 
-func (s *Server) routeCandidates(route RouteConfig, body map[string]any, kind APIKind, sessionID string, r *http.Request) []string {
+type requestFeatures struct {
+	Text        string
+	NeedsTools  bool
+	NeedsJSON   bool
+	NeedsVision bool
+	Complexity  float64
+}
+
+func (s *Server) routeCandidates(route RouteConfig, body map[string]any, kind APIKind, sessionID string, r *http.Request, controls XRouterControls) []string {
+	features := analyzeRequest(body, kind)
 	candidates := route.Candidates
 	if len(candidates) == 0 {
 		for name := range s.cfg.Targets {
@@ -27,17 +36,13 @@ func (s *Server) routeCandidates(route RouteConfig, body map[string]any, kind AP
 		if !ok {
 			continue
 		}
-		if !s.targetCompatible(t, body, kind) {
+		if !targetCompatibleWithFeatures(t, features, kind) {
 			continue
 		}
 		filtered = append(filtered, name)
 	}
 	if len(filtered) == 0 {
 		return nil
-	}
-	controls := XRouterControls{}
-	if r != nil {
-		controls = s.controlsFromRequest(r, body)
 	}
 	stickyName := ""
 	if sticky, ok := s.sticky.Get(sessionID); ok && stringInSlice(sticky, filtered) {
@@ -47,7 +52,7 @@ func (s *Server) routeCandidates(route RouteConfig, body map[string]any, kind AP
 	if controls.Objective != "" {
 		objective = controls.Objective
 	}
-	complexity := estimateComplexity(body, kind)
+	complexity := features.Complexity
 	maxCost, maxLatency := maxCostAndLatency(s, filtered)
 	prefixKey := ""
 	cacheScores := map[string]float64{}
@@ -69,8 +74,9 @@ func (s *Server) routeCandidates(route RouteConfig, body map[string]any, kind AP
 	scored := make([]scoredTarget, 0, len(filtered))
 	for _, name := range filtered {
 		t, _ := s.targetByName(name)
-		score := scoreTargetV3(t, route, objective, complexity, maxCost, maxLatency, cacheScores[name], judgeScores[name], stickyName == name, body)
-		score += keywordRuleScore(route.KeywordRules, t, name, requestText(body, kind))
+		score := scoreTargetV3WithFeatures(t, route, objective, complexity, maxCost, maxLatency, cacheScores[name], judgeScores[name], stickyName == name, features)
+		score += keywordRuleScore(route.KeywordRules, t, name, features.Text)
+		score += s.metrics.TargetScoreAdjustment(name, maxLatency)
 		scored = append(scored, scoredTarget{Name: name, Score: score})
 	}
 	sort.SliceStable(scored, func(i, j int) bool { return scored[i].Score > scored[j].Score })
@@ -104,30 +110,38 @@ func maxCostAndLatency(s *Server, candidates []string) (float64, float64) {
 }
 
 func (s *Server) targetCompatible(t TargetConfig, body map[string]any, kind APIKind) bool {
+	return targetCompatibleWithFeatures(t, analyzeRequest(body, kind), kind)
+}
+
+func targetCompatibleWithFeatures(t TargetConfig, features requestFeatures, kind APIKind) bool {
 	if kind == APIResponses && !t.Capabilities.Responses {
 		// Chat-only targets can still be used through XRouter's Responses shim.
 		if t.Provider == "" {
 			return false
 		}
 	}
-	if requestNeedsTools(body) && !t.Capabilities.Tools {
+	if features.NeedsTools && !t.Capabilities.Tools {
 		return false
 	}
-	if requestNeedsJSON(body) && !t.Capabilities.JSON {
+	if features.NeedsJSON && !t.Capabilities.JSON {
 		return false
 	}
-	if requestNeedsVision(body) && !t.Capabilities.Vision {
+	if features.NeedsVision && !t.Capabilities.Vision {
 		return false
 	}
 	return true
 }
 
 func scoreTargetV3(t TargetConfig, route RouteConfig, objective string, complexity, maxCost, maxLatency, cacheScore, judgeScore float64, sticky bool, body map[string]any) float64 {
+	return scoreTargetV3WithFeatures(t, route, objective, complexity, maxCost, maxLatency, cacheScore, judgeScore, sticky, analyzeRequest(body, APIChat))
+}
+
+func scoreTargetV3WithFeatures(t TargetConfig, route RouteConfig, objective string, complexity, maxCost, maxLatency, cacheScore, judgeScore float64, sticky bool, features requestFeatures) float64 {
 	costScore := 1.0 - math.Min(1, (t.CostIn+t.CostOut)/maxCost)
 	latencyScore := 1.0 - math.Min(1, t.LatencyMS/maxLatency)
 	quality := clamp01(t.Quality)
 	reliability := clamp01(t.Reliability)
-	capability := capabilityFitScore(t, body)
+	capability := capabilityFitScoreWithFeatures(t, features)
 	w := defaultSmartWeights(objective, route.Weights)
 	score := w.Quality*quality + w.Cost*costScore + w.Latency*latencyScore + w.Reliability*reliability + w.Capability*capability + w.Cache*cacheScore + w.Judge*judgeScore
 	if sticky {
@@ -139,22 +153,26 @@ func scoreTargetV3(t TargetConfig, route RouteConfig, objective string, complexi
 }
 
 func capabilityFitScore(t TargetConfig, body map[string]any) float64 {
+	return capabilityFitScoreWithFeatures(t, analyzeRequest(body, APIChat))
+}
+
+func capabilityFitScoreWithFeatures(t TargetConfig, features requestFeatures) float64 {
 	score := 0.5
 	need := 0
 	fit := 0
-	if requestNeedsTools(body) {
+	if features.NeedsTools {
 		need++
 		if t.Capabilities.Tools {
 			fit++
 		}
 	}
-	if requestNeedsJSON(body) {
+	if features.NeedsJSON {
 		need++
 		if t.Capabilities.JSON {
 			fit++
 		}
 	}
-	if requestNeedsVision(body) {
+	if features.NeedsVision {
 		need++
 		if t.Capabilities.Vision {
 			fit++
@@ -239,6 +257,10 @@ func clamp01(v float64) float64 {
 }
 
 func estimateComplexity(body map[string]any, kind APIKind) float64 {
+	return analyzeRequest(body, kind).Complexity
+}
+
+func analyzeRequest(body map[string]any, kind APIKind) requestFeatures {
 	text := requestText(body, kind)
 	chars := utf8.RuneCountInString(text)
 	score := math.Min(0.45, float64(chars)/8000.0)
@@ -249,16 +271,23 @@ func estimateComplexity(body map[string]any, kind APIKind) float64 {
 			score += 0.06
 		}
 	}
-	if requestNeedsTools(body) {
+	features := requestFeatures{
+		Text:        text,
+		NeedsTools:  requestNeedsTools(body),
+		NeedsJSON:   requestNeedsJSON(body),
+		NeedsVision: requestNeedsVision(body),
+	}
+	if features.NeedsTools {
 		score += 0.12
 	}
-	if requestNeedsJSON(body) {
+	if features.NeedsJSON {
 		score += 0.08
 	}
-	if requestNeedsVision(body) {
+	if features.NeedsVision {
 		score += 0.15
 	}
-	return clamp01(score)
+	features.Complexity = clamp01(score)
+	return features
 }
 
 func requestText(body map[string]any, kind APIKind) string {
@@ -337,5 +366,37 @@ func requestNeedsJSON(body map[string]any) bool {
 }
 
 func requestNeedsVision(body map[string]any) bool {
-	return strings.Contains(strings.ToLower(compactJSON(body)), "image_url") || strings.Contains(strings.ToLower(compactJSON(body)), "input_image")
+	if msgs, ok := body["messages"].([]any); ok {
+		for _, msg := range msgs {
+			if mm, ok := msg.(map[string]any); ok && contentNeedsVision(mm["content"]) {
+				return true
+			}
+		}
+	}
+	return contentNeedsVision(body["input"])
+}
+
+func contentNeedsVision(v any) bool {
+	switch x := v.(type) {
+	case []any:
+		for _, item := range x {
+			if contentNeedsVision(item) {
+				return true
+			}
+		}
+	case map[string]any:
+		typ := strings.ToLower(strings.TrimSpace(stringFromAny(x["type"])))
+		if typ == "image_url" || typ == "input_image" {
+			return true
+		}
+		if _, ok := x["image_url"]; ok {
+			return true
+		}
+		for _, key := range []string{"content", "input"} {
+			if contentNeedsVision(x[key]) {
+				return true
+			}
+		}
+	}
+	return false
 }
