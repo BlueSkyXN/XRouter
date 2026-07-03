@@ -103,7 +103,7 @@ func (s *Server) callTargetBytes(ctx context.Context, targetName string, kind AP
 	if err != nil {
 		return UpstreamResult{TargetName: targetName, Target: target, Status: 0, Duration: time.Since(start), Err: err}
 	}
-	applyProviderHeaders(req, provider, target, incoming, body, s.cfg.RequestOverrides.AllowProviderKeyOverride)
+	applyProviderHeaders(req, provider, target, incoming, body, s.cfg.RequestOverrides.Enabled && s.cfg.RequestOverrides.AllowProviderKeyOverride)
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return UpstreamResult{TargetName: targetName, Target: target, Status: 0, Duration: time.Since(start), Err: err}
@@ -142,7 +142,7 @@ func (s *Server) streamTarget(ctx context.Context, w http.ResponseWriter, target
 	if err != nil {
 		return UpstreamResult{TargetName: targetName, Target: target, Status: 0, Duration: time.Since(start), Err: err}
 	}
-	applyProviderHeaders(req, provider, target, incoming, body, s.cfg.RequestOverrides.AllowProviderKeyOverride)
+	applyProviderHeaders(req, provider, target, incoming, body, s.cfg.RequestOverrides.Enabled && s.cfg.RequestOverrides.AllowProviderKeyOverride)
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return UpstreamResult{TargetName: targetName, Target: target, Status: 0, Duration: time.Since(start), Err: err}

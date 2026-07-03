@@ -400,8 +400,32 @@ func textFromResult(res UpstreamResult) string {
 }
 
 func verificationPassed(text string) bool {
-	lower := strings.ToLower(text)
-	return strings.Contains(lower, "\"pass\":true") || strings.Contains(lower, "pass: true") || strings.Contains(lower, "passed")
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(extractJSONObject(text)), &parsed); err != nil {
+		return false
+	}
+	for _, key := range []string{"pass", "passed", "ok"} {
+		switch v := parsed[key].(type) {
+		case bool:
+			if v {
+				return true
+			}
+		case string:
+			if isTrueishVerificationValue(v) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isTrueishVerificationValue(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "true", "pass", "passed", "ok", "yes":
+		return true
+	default:
+		return false
+	}
 }
 
 func firstAvailable(first string, lists ...[]string) string {

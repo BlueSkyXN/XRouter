@@ -480,7 +480,9 @@ func cloneJSONMap(in map[string]any) map[string]any {
 	}
 	b, _ := json.Marshal(in)
 	var out map[string]any
-	_ = json.Unmarshal(b, &out)
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	_ = dec.Decode(&out)
 	if out == nil {
 		out = map[string]any{}
 	}
