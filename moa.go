@@ -99,13 +99,7 @@ func (s *Server) executeMoAChat(ctx context.Context, r *http.Request, body map[s
 }
 
 func (s *Server) collectReferences(ctx context.Context, r *http.Request, body map[string]any, route RouteConfig, routeName string) []referenceOutput {
-	parallelism := route.Parallelism
-	if parallelism <= 0 {
-		parallelism = len(route.References)
-	}
-	if parallelism <= 0 {
-		parallelism = 1
-	}
+	parallelism := effectiveParallelism(route.Parallelism, len(route.References))
 	sem := make(chan struct{}, parallelism)
 	var wg sync.WaitGroup
 	out := make([]referenceOutput, len(route.References))

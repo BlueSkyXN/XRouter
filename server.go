@@ -8,25 +8,37 @@ import (
 )
 
 type Server struct {
-	cfg       Config
-	client    *http.Client
-	sticky    *StickyStore
-	metrics   *Metrics
-	prefixBK  *PrefixCacheStore
-	apiKeys   map[string]struct{}
-	startTime time.Time
+	cfg          Config
+	client       *http.Client
+	streamClient *http.Client
+	sticky       *StickyStore
+	metrics      *Metrics
+	prefixBK     *PrefixCacheStore
+	apiKeys      map[string]struct{}
+	startTime    time.Time
 }
 
 func NewServer(cfg Config) *Server {
-	return &Server{
-		cfg:       cfg,
-		client:    &http.Client{Timeout: time.Duration(cfg.Server.RequestTimeoutMS) * time.Millisecond},
-		sticky:    NewStickyStore(),
-		metrics:   NewMetrics(),
-		prefixBK:  NewPrefixCacheStore(cfg.PrefixCache),
-		apiKeys:   configuredAPIKeys(cfg.Auth),
-		startTime: time.Now(),
+	timeout := time.Duration(cfg.Server.RequestTimeoutMS) * time.Millisecond
+	if timeout <= 0 {
+		timeout = 120 * time.Second
 	}
+	return &Server{
+		cfg:          cfg,
+		client:       &http.Client{Timeout: timeout, Transport: upstreamTransport(timeout)},
+		streamClient: &http.Client{Transport: upstreamTransport(timeout)},
+		sticky:       NewStickyStore(),
+		metrics:      NewMetrics(),
+		prefixBK:     NewPrefixCacheStore(cfg.PrefixCache),
+		apiKeys:      configuredAPIKeys(cfg.Auth),
+		startTime:    time.Now(),
+	}
+}
+
+func upstreamTransport(responseHeaderTimeout time.Duration) *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.ResponseHeaderTimeout = responseHeaderTimeout
+	return t
 }
 
 func (s *Server) routes() http.Handler {

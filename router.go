@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -336,7 +335,7 @@ func (s *Server) handleStreamWithFallback(w http.ResponseWriter, r *http.Request
 			}
 			return
 		}
-		if !retryableStatus(res.Status) {
+		if res.Status > 0 && !retryableStatus(res.Status) {
 			break
 		}
 	}
@@ -388,16 +387,7 @@ func (s *Server) writeUpstreamResult(w http.ResponseWriter, decision RouteDecisi
 }
 
 func addXRouterBodyMetadata(raw []byte, route, target, upstreamModel string) []byte {
-	var obj map[string]any
-	if err := json.Unmarshal(raw, &obj); err != nil || obj == nil {
-		return raw
-	}
-	obj["xrouter"] = map[string]any{"route": route, "target": target, "upstream_model": upstreamModel}
-	b, err := json.Marshal(obj)
-	if err != nil {
-		return raw
-	}
-	return b
+	return attachXRouterMetadata(raw, map[string]any{"route": route, "target": target, "upstream_model": upstreamModel})
 }
 
 func (s *Server) updatePrefixCache(body map[string]any, decision RouteDecision, kind APIKind, res UpstreamResult) {

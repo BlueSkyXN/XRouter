@@ -55,6 +55,28 @@ func TestBuildRacePlansWithEfforts(t *testing.T) {
 	}
 }
 
+func TestAddXRouterBodyMetadataPreservesRaceMetadata(t *testing.T) {
+	raw := []byte(`{"choices":[{"message":{"content":"ok"}}],"xrouter":{"synthetic":true,"race":{"winner_target":"fast","attempts":[{"target":"fast"}]}}}`)
+
+	got := addXRouterBodyMetadata(raw, "xrouter/race", "fast", "upstream-fast")
+
+	var obj map[string]any
+	if err := json.Unmarshal(got, &obj); err != nil {
+		t.Fatal(err)
+	}
+	xr := obj["xrouter"].(map[string]any)
+	if xr["route"] != "xrouter/race" || xr["target"] != "fast" || xr["upstream_model"] != "upstream-fast" {
+		t.Fatalf("metadata fields not attached correctly: %+v", xr)
+	}
+	if xr["synthetic"] != true {
+		t.Fatalf("existing xrouter metadata was not preserved: %+v", xr)
+	}
+	race := xr["race"].(map[string]any)
+	if race["winner_target"] != "fast" {
+		t.Fatalf("race metadata was overwritten: %+v", race)
+	}
+}
+
 func chatBodyForRace(text string, reasoningTokens, completionTokens int, finishReason string) []byte {
 	body := map[string]any{
 		"choices": []any{map[string]any{"finish_reason": finishReason, "message": map[string]any{"role": "assistant", "content": text}}},

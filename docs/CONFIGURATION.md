@@ -244,6 +244,8 @@ Race strategies are configured as MoV routes with a `race` block.
 }
 ```
 
+When `parallelism` is omitted or set to `0`, XRouter runs all reference or race attempts for that route concurrently, up to the number of work items. Set `parallelism` explicitly to cap concurrency.
+
 ## Request-level overrides
 
 When `request_overrides.enabled` is true, callers can pass XRouter-private controls in the JSON body:

@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func testServerForRouting() *Server {
@@ -167,6 +168,103 @@ func TestStreamingNonRetryableUpstreamErrorIsNotAppended(t *testing.T) {
 	}
 	if strings.Contains(rec.Body.String(), "upstream_error") {
 		t.Fatalf("xrouter error was appended to stream response: %s", rec.Body.String())
+	}
+}
+
+func TestStreamingNetworkErrorFallsBackToNextTarget(t *testing.T) {
+	badUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	badURL := badUpstream.URL
+	badUpstream.Close()
+
+	goodCalls := 0
+	goodUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		goodCalls++
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("data: ok\n\n"))
+	}))
+	defer goodUpstream.Close()
+
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"bad":  {BaseURL: badURL, Supports: []string{"chat"}},
+			"good": {BaseURL: goodUpstream.URL, Supports: []string{"chat"}},
+		},
+		Targets: map[string]TargetConfig{
+			"bad-target":  {Provider: "bad", Model: "bad-model"},
+			"good-target": {Provider: "good", Model: "good-model"},
+		},
+		Routes: map[string]RouteConfig{
+			"xrouter/fallback-stream": {Type: "direct", Target: "bad-target", Fallbacks: []string{"good-target"}},
+		},
+	}
+	cfg.applyDefaults()
+	s := NewServer(cfg)
+	body := map[string]any{"model": "xrouter/fallback-stream", "stream": true, "messages": []any{map[string]any{"role": "user", "content": "hi"}}}
+	req := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	decision, err := s.resolve("xrouter/fallback-stream", body, APIChat, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	s.handleStreamWithFallback(rec, req, body, decision, APIChat, "")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected fallback stream to succeed, got %d with body %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("x-xrouter-target"); got != "good-target" {
+		t.Fatalf("expected fallback target good-target, got %q", got)
+	}
+	if got := rec.Body.String(); got != "data: ok\n\n" {
+		t.Fatalf("expected successful stream body, got %q", got)
+	}
+	if goodCalls != 1 {
+		t.Fatalf("expected one fallback upstream call, got %d", goodCalls)
+	}
+}
+
+func TestStreamingClientDoesNotTimeoutAfterHeaders(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		time.Sleep(75 * time.Millisecond)
+		_, _ = w.Write([]byte("data: slow\n\n"))
+	}))
+	defer upstream.Close()
+
+	cfg := Config{
+		Server: ServerConfig{RequestTimeoutMS: 25},
+		Providers: map[string]ProviderConfig{
+			"p": {BaseURL: upstream.URL, Supports: []string{"chat"}},
+		},
+		Targets: map[string]TargetConfig{
+			"slow": {Provider: "p", Model: "slow-model"},
+		},
+		Routes: map[string]RouteConfig{
+			"xrouter/slow-stream": {Type: "direct", Target: "slow"},
+		},
+	}
+	cfg.applyDefaults()
+	s := NewServer(cfg)
+	body := map[string]any{"model": "xrouter/slow-stream", "stream": true, "messages": []any{map[string]any{"role": "user", "content": "hi"}}}
+	req := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	decision, err := s.resolve("xrouter/slow-stream", body, APIChat, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	s.handleStreamWithFallback(rec, req, body, decision, APIChat, "")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected slow stream to keep running after headers, got %d with body %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.String(); got != "data: slow\n\n" {
+		t.Fatalf("expected delayed stream body, got %q", got)
 	}
 }
 

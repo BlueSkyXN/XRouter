@@ -321,11 +321,8 @@ func (c *Config) applyDefaults() {
 		if r.MoAComplexityThreshold <= 0 {
 			r.MoAComplexityThreshold = 0.62
 		}
-		if r.Parallelism <= 0 {
-			r.Parallelism = len(r.References)
-			if r.Parallelism <= 0 {
-				r.Parallelism = 1
-			}
+		if r.Parallelism < 0 {
+			r.Parallelism = 0
 		}
 		if r.ReferencePrompt == "" {
 			r.ReferencePrompt = "Give an independent concise answer."
@@ -377,6 +374,16 @@ func (c *Config) applyDefaults() {
 		}
 		c.Targets[k] = t
 	}
+}
+
+func effectiveParallelism(configured, workItems int) int {
+	if workItems <= 0 {
+		return 1
+	}
+	if configured <= 0 || configured > workItems {
+		return workItems
+	}
+	return configured
 }
 
 func defaultRaceConfig(r RaceConfig) RaceConfig {

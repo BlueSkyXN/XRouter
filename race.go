@@ -108,10 +108,7 @@ func (s *Server) runRaceAttempts(ctx context.Context, r *http.Request, body map[
 	if len(plans) == 0 {
 		return nil
 	}
-	parallelism := route.Parallelism
-	if parallelism <= 0 || parallelism > len(plans) {
-		parallelism = len(plans)
-	}
+	parallelism := effectiveParallelism(route.Parallelism, len(plans))
 	sem := make(chan struct{}, parallelism)
 	out := make([]raceAttempt, len(plans))
 	var wg sync.WaitGroup
