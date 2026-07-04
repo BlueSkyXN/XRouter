@@ -73,6 +73,22 @@ func TestRaceSelectionPrefersNonDegradedSuccessOverHigherScore(t *testing.T) {
 	}
 }
 
+func TestRaceScoreNormalizesSelection(t *testing.T) {
+	cfg := defaultRaceConfig(RaceConfig{Selection: "fastest-acceptable"})
+	cfg.Selection = "fastest-acceptable"
+	body := chatBodyForRace("ok", 0, 5, "stop")
+	att := raceAttempt{
+		Index:     0,
+		Target:    "a",
+		Result:    UpstreamResult{TargetName: "a", Status: http.StatusOK, Body: body},
+		Metrics:   metricsFromResult(UpstreamResult{TargetName: "a", Status: http.StatusOK, Body: body}, cfg),
+		Succeeded: true,
+	}
+	if score := raceScore(att, cfg); score < 100_000 {
+		t.Fatalf("expected hyphenated fastest-acceptable to receive fastest bonus, got %f", score)
+	}
+}
+
 func TestBuildRacePlansWithEfforts(t *testing.T) {
 	plans := buildRacePlans(RouteConfig{Candidates: []string{"a", "b"}, Race: RaceConfig{Efforts: []string{"medium", "high"}, Replicas: 9}})
 	if len(plans) != 4 {

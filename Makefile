@@ -68,4 +68,10 @@ release-snapshot: clean test
 	$(MAKE) checksum
 
 checksum:
-	cd $(PACKAGE_DIR) && shasum -a 256 *.tar.gz *.zip > SHA256SUMS
+	cd $(PACKAGE_DIR) && { \
+		if command -v sha256sum >/dev/null 2>&1; then \
+			sha256sum *.tar.gz *.zip; \
+		else \
+			shasum -a 256 *.tar.gz *.zip; \
+		fi; \
+	} > SHA256SUMS

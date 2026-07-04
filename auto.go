@@ -112,10 +112,6 @@ func maxCostAndLatency(s *Server, candidates []string) (float64, float64) {
 	return maxCost, maxLatency
 }
 
-func (s *Server) targetCompatible(t TargetConfig, body map[string]any, kind APIKind) bool {
-	return targetCompatibleWithFeatures(t, analyzeRequest(body, kind), kind)
-}
-
 func targetCompatibleWithFeatures(t TargetConfig, features requestFeatures, kind APIKind) bool {
 	if kind == APIResponses && !t.Capabilities.Responses {
 		// Chat-only targets can still be used through XRouter's Responses shim.
@@ -135,10 +131,6 @@ func targetCompatibleWithFeatures(t TargetConfig, features requestFeatures, kind
 	return true
 }
 
-func scoreTargetV3(t TargetConfig, route RouteConfig, objective string, complexity, maxCost, maxLatency, cacheScore, judgeScore float64, sticky bool, body map[string]any) float64 {
-	return scoreTargetV3WithFeatures(t, route, objective, complexity, maxCost, maxLatency, cacheScore, judgeScore, sticky, analyzeRequest(body, APIChat))
-}
-
 func scoreTargetV3WithFeatures(t TargetConfig, route RouteConfig, objective string, complexity, maxCost, maxLatency, cacheScore, judgeScore float64, sticky bool, features requestFeatures) float64 {
 	costScore := 1.0 - math.Min(1, (t.CostIn+t.CostOut)/maxCost)
 	latencyScore := 1.0 - math.Min(1, t.LatencyMS/maxLatency)
@@ -153,10 +145,6 @@ func scoreTargetV3WithFeatures(t TargetConfig, route RouteConfig, objective stri
 	// Complex prompts should tilt toward quality even when the objective is not pure quality.
 	score += 0.12 * complexity * quality
 	return score
-}
-
-func capabilityFitScore(t TargetConfig, body map[string]any) float64 {
-	return capabilityFitScoreWithFeatures(t, analyzeRequest(body, APIChat))
 }
 
 func capabilityFitScoreWithFeatures(t TargetConfig, features requestFeatures) float64 {

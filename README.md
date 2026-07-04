@@ -137,6 +137,17 @@ docker run --rm -p 8080:8080 \
   xrouter:go
 ```
 
+The image defaults to `/app/config.example.json`. To use a mounted config, pass normal CLI args after the image name:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -v "$PWD/config.local.json:/app/config.local.json:ro" \
+  -e XROUTER_API_KEYS=$XROUTER_API_KEYS \
+  -e OPENAI_API_KEY=$OPENAI_API_KEY \
+  -e OPENROUTER_API_KEY=$OPENROUTER_API_KEY \
+  xrouter:go -config /app/config.local.json
+```
+
 ## 生产部署安全基线
 
 `config.example.json` 用于本地可运行示例，并默认关闭 provider key request override。共享或公开部署时，应设置 XRouter 自己的 API key，并把 provider key 放在环境变量中；如果运行时已经加载 provider key 但没有加载 XRouter API key，启动日志会给出 WARNING：

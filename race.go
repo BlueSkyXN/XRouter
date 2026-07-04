@@ -98,7 +98,7 @@ func (s *Server) movSerialBoundaryEscalate(ctx context.Context, r *http.Request,
 		att.Score = raceScore(att, route.Race)
 		attempts = append(attempts, att)
 		idx++
-		if att.Succeeded && !raceLooksDegraded(att.Metrics, route.Race) && strings.EqualFold(route.Race.Selection, "fastest_acceptable") {
+		if att.Succeeded && !raceLooksDegraded(att.Metrics, route.Race) && normalizeRaceSelection(route.Race.Selection) == "fastest_acceptable" {
 			res.Body = addRaceMetadata(res.Body, decision.RouteName, att, attempts, route.Race)
 			return res, nil
 		}
@@ -309,7 +309,7 @@ func raceScore(a raceAttempt, cfg RaceConfig) float64 {
 	reasonWeight := cfg.ReasoningWeight
 	latencyWeight := cfg.LatencyWeight
 	score := visibleWeight*float64(m.VisibleTokens) + outputWeight*float64(m.OutputTokens) + reasonWeight*float64(m.ReasoningTokens)
-	switch strings.ToLower(strings.TrimSpace(cfg.Selection)) {
+	switch normalizeRaceSelection(cfg.Selection) {
 	case "usage_total":
 		score += float64(m.TotalTokens)
 	case "max_output", "longest_output":

@@ -72,6 +72,7 @@ Recommended production config posture:
 | `server.debug` | Keep `false` unless the debug endpoint is intentionally protected and needed. |
 | `routing.unknown_model_policy` | Keep `reject` unless passthrough is an explicit product decision. |
 | `prefix_cache.hash_salt` | Use a high-entropy deployment-specific value when stable prefix hash keys are required. |
+| Rate limiting | Enforce per-IP or per-key limits in the fronting proxy, load balancer, or platform gateway. |
 
 ## Docker
 
@@ -89,6 +90,17 @@ docker run --rm -p 8080:8080 \
   -e OPENAI_API_KEY=$OPENAI_API_KEY \
   -e OPENROUTER_API_KEY=$OPENROUTER_API_KEY \
   xrouter:go
+```
+
+The image uses `ENTRYPOINT ["/app/xrouter"]` and a default `CMD ["-config", "/app/config.example.json"]`. Override the config by passing normal CLI args after the image name:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -v "$PWD/config.local.json:/app/config.local.json:ro" \
+  -e XROUTER_API_KEYS=$XROUTER_API_KEYS \
+  -e OPENAI_API_KEY=$OPENAI_API_KEY \
+  -e OPENROUTER_API_KEY=$OPENROUTER_API_KEY \
+  xrouter:go -config /app/config.local.json
 ```
 
 The release workflow publishes `ghcr.io/blueskyxn/xrouter:<tag>` only for tag-driven releases. PR and branch CI build Docker images for validation but do not publish them.
