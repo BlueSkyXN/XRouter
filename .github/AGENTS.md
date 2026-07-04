@@ -13,8 +13,9 @@ Key files: `.github/workflows/ci.yml`, `.github/workflows/release.yml`.
 ## Required before changes
 
 - Inspect `go.mod`, `Makefile`, `Dockerfile`, `README.md`, and `docs/RELEASING.md` before changing build/release behavior.
-- Keep CI aligned with local commands: format check, `make vet`, `make test`, `make build`, and `./dist/xrouter -version`.
+- Keep CI aligned with local commands: `scripts/check-docs.sh`, format check, `make vet`, `make test`, `go test -race -count=1 ./...`, `make build`, `./dist/xrouter -version`, `scripts/smoke-local.sh`, and `make release-snapshot VERSION=v0.0.0-ci`.
 - Keep release artifacts aligned with docs: Linux amd64/arm64, Darwin amd64/arm64, Windows amd64, `SHA256SUMS`, GitHub Release assets, and GHCR image.
+- Keep `release.yml` pre-publication gates at least as strong as CI for docs/examples contracts, vet, unit tests, race tests, build/version smoke, and non-live smoke.
 - Use least permissions. `ci.yml` should not need write permissions. `release.yml` needs write permissions only for release assets and packages.
 
 ## Do not
@@ -27,7 +28,7 @@ Key files: `.github/workflows/ci.yml`, `.github/workflows/release.yml`.
 
 ## Validation
 
-- Local default before workflow release changes: `go test ./...`, `make build`, `./dist/xrouter -version`.
+- Local default before workflow release changes: `scripts/check-docs.sh`, `go test ./...`, `go test -race -count=1 ./...`, `make build`, `./dist/xrouter -version`, `scripts/smoke-local.sh`.
 - For packaging layout changes, also run `make release-snapshot VERSION=v0.0.0-local`.
 - Docker/GHCR changes need `docker build -t xrouter:go .` when Docker is available.
 - GitHub-side workflow execution requires a pushed branch or manual GitHub run; if not run, state that limitation in the final report.

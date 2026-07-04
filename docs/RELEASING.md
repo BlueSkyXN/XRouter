@@ -6,10 +6,13 @@ XRouter releases are tag-driven. A release publishes multi-platform binary archi
 
 ```bash
 make fmt
+make check-docs
 make vet
 make test
+make race
 make build
 ./dist/xrouter -version
+make smoke
 ```
 
 Build local release archives for all supported platforms:
@@ -27,6 +30,8 @@ git push origin v0.1.0
 ```
 
 Pushing a `v*` tag runs `.github/workflows/release.yml`.
+
+The release workflow repeats the high-signal preflight before publishing: docs/examples contract checks, format, vet, unit tests, race tests, build/version smoke, and the non-live local HTTP smoke. Publication only starts after those checks pass.
 
 ## Manual release
 

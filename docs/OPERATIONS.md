@@ -129,6 +129,14 @@ curl -i http://127.0.0.1:8080/v1/chat/completions \
   -d @examples/chat.smart-router-dry-run.json
 ```
 
+Automated non-live smoke:
+
+```bash
+make smoke
+```
+
+This starts a temporary localhost gateway with a temporary `smoke-key`, checks auth gating, `/healthz`, `/v1/models`, smart-router dry-run, unknown-model rejection, and debug prefix-cache access. It does not require provider credentials and does not call upstream providers.
+
 For real upstream calls, use non-dry-run examples only after provider keys are present and the target provider is expected to be reachable.
 
 ## Logs And Debugging
@@ -166,10 +174,13 @@ Run the normal local gate before publishing a deployment artifact:
 
 ```bash
 gofmt -l ./*.go
+scripts/check-docs.sh
 go vet ./...
 go test ./...
+go test -race -count=1 ./...
 make build
 ./dist/xrouter -version
+scripts/smoke-local.sh
 ```
 
 For release packaging changes, also run:

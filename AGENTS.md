@@ -20,6 +20,7 @@ XRouter 是一个自托管的 OpenAI-compatible LLM 路由控制层。它不是 
 | `config.example.json` | Canonical runnable routing/provider config | No | 修改 config schema、默认 route、provider target、request override、race/MoV 示例时 |
 | `Makefile` | Local build, test, packaging, checksum commands | No | 修改构建、打包、版本注入或 dist 产物布局时 |
 | `Dockerfile` / `.dockerignore` | Container build and runtime image | No | 修改 container entrypoint、base image、copied files、ports 或 build args 时 |
+| `scripts/` | Repository validation helpers for docs/examples contracts and non-live smoke tests | No | 修改 CI、本地验证、docs/examples gate、smoke 行为或 release preflight 时 |
 | `.github/` | CI, release, binary packaging, GitHub Release and GHCR publishing | Yes | 修改任何 workflow、release permission、artifact、tag/manual dispatch、GHCR 相关文件前 |
 | `docs/` | Human-facing architecture, configuration, strategy, release, testing docs | No | 修改行为、配置、API、发布流程或背景定位后，同步相关文档 |
 | `docs/README.md` | Documentation map and maintained reading order | No | 新增、删除或重命名公开文档时同步 |
@@ -51,8 +52,15 @@ Use commands that exist in this repository. Do not invent npm, pnpm, cargo, rust
 | `make vet` | Makefile wrapper for `go vet ./...` | repo | OK |
 | `go test ./...` | Unit tests | repo | OK; current tests do not require live providers |
 | `make test` | Makefile wrapper for `go test ./...` | repo | OK |
+| `go test -race -count=1 ./...` | Race-enabled Go tests | repo | Slower; no live providers |
+| `make race` | Makefile wrapper for race-enabled Go tests | repo | Slower; no live providers |
+| `scripts/check-docs.sh` | Validate docs/examples/workflow repository contracts | repo | Requires `python3`; no network |
+| `make check-docs` | Makefile wrapper for docs/examples contract validation | repo | Requires `python3`; no network |
 | `make build` | Build `dist/xrouter` with version ldflags | repo | Writes `dist/` |
 | `./dist/xrouter -version` | Smoke-check built binary version metadata | repo | Requires `make build` first |
+| `scripts/smoke-local.sh` | Start a temporary local gateway and run non-live HTTP smoke checks | repo | Requires `curl` and `python3`; writes temp files only |
+| `make smoke` | Build then run the non-live local smoke script | repo | Writes `dist/`; no upstream provider calls |
+| `make ci` | Local aggregate gate: docs, vet, tests, race, build, smoke, release snapshot | repo | Slow; writes `dist/`; no GitHub publication |
 | `go run . -config config.example.json` | Run local server from example config | repo | Starts a server; upstream calls need provider credentials/network |
 | `make run CONFIG=config.local.json` | Run with local config | repo | Requires local ignored config and provider env vars for real upstream calls |
 | `make release-snapshot VERSION=v0.0.0-local` | Build local cross-platform archives and checksums | repo | Writes `dist/`; no GitHub publication |
@@ -102,15 +110,17 @@ Use commands that exist in this repository. Do not invent npm, pnpm, cargo, rust
 完成代码、config、Makefile、Dockerfile、workflow、docs/examples 行为变更后，按风险选择验证。默认闭环：
 
 1. `gofmt -l ./*.go` 应无输出；需要修复时运行 `make fmt`。
-2. `go test ./...` 或 `make test` 必须通过。
-3. `make build` 必须通过。
-4. `./dist/xrouter -version` 必须能运行。
+2. `scripts/check-docs.sh` 应通过，尤其是 docs/examples/workflow contract 改动。
+3. `go test ./...` 或 `make test` 必须通过。
+4. `make build` 必须通过。
+5. `./dist/xrouter -version` 必须能运行。
+6. CI、release、smoke 或 concurrency-sensitive 改动应运行 `go test -race -count=1 ./...` 和 `scripts/smoke-local.sh`。
 
 Scope-specific validation:
 
 - Routing/config/schema changes: run `go test ./...` and add/update focused tests in `router_test.go`, `config_test.go`, `strategy_v3_test.go`, `responses_test.go`, or `race_test.go` as appropriate.
 - Docs-only edits: if no behavior changed, at least inspect affected examples/commands for consistency; do not claim runtime validation unless commands were run.
-- Release/package changes: read `.github/AGENTS.md`, then run local `go test ./...`, `make build`, and `./dist/xrouter -version`. Use `make release-snapshot VERSION=v0.0.0-local` only when archive layout or checksums changed.
+- Release/package changes: read `.github/AGENTS.md`, then run local `scripts/check-docs.sh`, `go test ./...`, `go test -race -count=1 ./...`, `make build`, `./dist/xrouter -version`, and `scripts/smoke-local.sh`. Use `make release-snapshot VERSION=v0.0.0-local` only when archive layout or checksums changed.
 - Docker changes: run `docker build -t xrouter:go .` when Docker is available; if Docker is unavailable, state that clearly.
 - Live provider behavior: only validate with real upstream calls when user has provided or approved credentials/config for that test; otherwise stop at unit/build validation.
 

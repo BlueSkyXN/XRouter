@@ -6,20 +6,26 @@ From the repository root:
 
 ```bash
 make fmt
+make check-docs
 make vet
 make test
+make race
 make build
 ./dist/xrouter -version
+make smoke
 ```
 
 Equivalent explicit commands:
 
 ```bash
 gofmt -w *.go
+scripts/check-docs.sh
 go vet ./...
 go test ./...
+go test -race -count=1 ./...
 make build
 ./dist/xrouter -version
+scripts/smoke-local.sh
 ```
 
 ## Test coverage
@@ -48,6 +54,29 @@ The Go test suite covers:
 - boundary-aware race selection
 - race plan expansion with reasoning effort ladders
 
+## Scripted checks
+
+`scripts/check-docs.sh` is the repository contract check for documentation and examples. It verifies:
+
+- required docs, workflow, example, and script entrypoints exist
+- tracked scripts are executable
+- `config.example.json` and all `examples/*.json` parse as JSON
+- top-level README and `docs/*.md` relative links resolve inside the repository
+- README keeps the maintained docs entrypoints visible
+- CI and release workflows keep docs, smoke, race, and package gates wired
+- release/build paths do not package ignored `local/` material
+
+`scripts/smoke-local.sh` is a non-live HTTP smoke test. It builds `dist/xrouter` if needed, writes a temporary config on a free localhost port, enables a temporary `smoke-key`, starts the gateway, and checks:
+
+- `GET /healthz`
+- unauthenticated `GET /v1/models` returns `401`
+- authenticated `GET /v1/models` lists expected IDs
+- `POST /v1/chat/completions` with `examples/chat.smart-router-dry-run.json`
+- unknown model rejection under `routing.unknown_model_policy=reject`
+- authenticated `GET /debug/prefix-cache` when temporary debug mode is enabled
+
+The smoke script does not require provider keys and does not call upstream providers.
+
 ## GitHub Actions
 
 The workflow is:
@@ -69,7 +98,18 @@ make build
 upload dist/xrouter as xrouter-linux-amd64
 ```
 
-It also runs a Docker build job after the Go job:
+It also runs these independent gates:
+
+```text
+GitHub Actions / actionlint
+Docs / examples contract
+Go / race tests
+Local / non-live smoke
+Release snapshot / packages
+Docker / build
+```
+
+The Docker build job runs after the Go build job:
 
 ```text
 checkout
@@ -90,7 +130,10 @@ The release workflow is:
 
 It runs for `v*` tags and manual dispatch against an existing tag. It:
 
+- verifies docs/examples contracts
 - verifies format, vet, and tests
+- runs race tests
+- builds the binary, checks version metadata, and runs the non-live smoke test
 - builds archives for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, and windows/amd64
 - publishes SHA256SUMS
 - creates or updates the GitHub Release
@@ -105,10 +148,13 @@ Before tagging a release:
 ```bash
 make clean
 make fmt
+make check-docs
 make vet
 make test
+make race
 make build
 ./dist/xrouter -version
+make smoke
 make release-snapshot VERSION=v0.0.0-local
 ```
 

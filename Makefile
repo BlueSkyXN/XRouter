@@ -1,4 +1,4 @@
-.PHONY: run test build fmt vet clean docker package package-current release-snapshot checksum
+.PHONY: run test race check-docs smoke ci build fmt vet clean docker package package-current release-snapshot checksum
 
 GO ?= go
 BINARY ?= xrouter
@@ -31,9 +31,20 @@ vet:
 test:
 	$(GO) test ./...
 
+race:
+	$(GO) test -race -count=1 ./...
+
+check-docs:
+	scripts/check-docs.sh
+
 build:
 	mkdir -p $(DIST_DIR)
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build -trimpath -ldflags="$(LDFLAGS)" -o $(DIST_DIR)/$(BINARY)$(BIN_EXT) .
+
+smoke: build
+	scripts/smoke-local.sh
+
+ci: check-docs vet test race build smoke release-snapshot
 
 docker:
 	docker build \
