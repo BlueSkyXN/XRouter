@@ -80,7 +80,10 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) resolve(model string, body map[string]any, kind APIKind, r *http.Request) (RouteDecision, error) {
-	controls := s.controlsFromRequest(r, body)
+	controls, err := s.controlsFromRequest(r, body)
+	if err != nil {
+		return RouteDecision{}, err
+	}
 	lookup := model
 	if controls.Route != "" {
 		lookup = controls.Route

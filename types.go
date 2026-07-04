@@ -36,6 +36,7 @@ type AuthConfig struct {
 type RequestOverrideConfig struct {
 	Enabled                  bool `json:"enabled"`
 	AllowProviderKeyOverride bool `json:"allow_provider_key_override"`
+	MaxRoutingTargets        int  `json:"max_routing_targets"`
 	MaxShadowTargets         int  `json:"max_shadow_targets"`
 	MaxListenerTargets       int  `json:"max_listener_targets"`
 }
@@ -268,6 +269,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Server.MaxUpstreamBodyBytes <= 0 {
 		c.Server.MaxUpstreamBodyBytes = 64 << 20
+	}
+	if c.RequestOverrides.MaxRoutingTargets <= 0 {
+		c.RequestOverrides.MaxRoutingTargets = 32
 	}
 	if c.RequestOverrides.MaxShadowTargets <= 0 {
 		c.RequestOverrides.MaxShadowTargets = 4

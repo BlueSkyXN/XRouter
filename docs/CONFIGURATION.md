@@ -297,6 +297,8 @@ x-xrouter-judge-enabled: true
 x-xrouter-session-id: tenant-a/thread-123
 ```
 
+`request_overrides.max_routing_targets` bounds request-provided `targets`, `candidates`, and `references` lists before routing or multi-model orchestration starts. The default is `32`. Oversized lists are rejected instead of being truncated silently. `max_shadow_targets` and `max_listener_targets` similarly bound request-provided side-channel work.
+
 Provider API keys can be supplied per request only if explicitly allowed:
 
 ```json

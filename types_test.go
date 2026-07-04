@@ -47,6 +47,20 @@ func TestApplyDefaultsKeepsParallelismUnsetForCandidateRace(t *testing.T) {
 	}
 }
 
+func TestApplyDefaultsSetsRequestOverrideBounds(t *testing.T) {
+	var cfg Config
+	cfg.applyDefaults()
+	if got := cfg.RequestOverrides.MaxRoutingTargets; got != 32 {
+		t.Fatalf("expected default max routing targets 32, got %d", got)
+	}
+	if got := cfg.RequestOverrides.MaxShadowTargets; got != 4 {
+		t.Fatalf("expected default max shadow targets 4, got %d", got)
+	}
+	if got := cfg.RequestOverrides.MaxListenerTargets; got != 4 {
+		t.Fatalf("expected default max listener targets 4, got %d", got)
+	}
+}
+
 func TestEffectiveParallelismDefaultsToWorkItems(t *testing.T) {
 	tests := []struct {
 		name       string

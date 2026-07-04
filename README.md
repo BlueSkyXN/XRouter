@@ -145,6 +145,8 @@ Authorization: Bearer team-key-1
 
 不要提交 `.env*`、`config.local.json`、`*.local.json`、真实 token、内部 URL、客户数据或个人信息。
 
+如果对不完全可信的调用方开放 request overrides，请保留 `max_routing_targets`、`max_shadow_targets` 和 `max_listener_targets` 这类上界；共享托管场景通常还应关闭 `allow_provider_key_override`，只使用服务端 provider credentials。
+
 ## GitHub Actions
 
 `.github/workflows/ci.yml` 在 push / PR 上执行：

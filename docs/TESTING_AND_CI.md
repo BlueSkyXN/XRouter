@@ -29,6 +29,7 @@ The Go test suite covers:
 - Responses API to Chat Completions shim conversion
 - Chat Completions to Responses-shaped wrapping
 - request controls and request-level overrides
+- request override routing-target list bounds
 - direct alias behavior with no prompt rewrite
 - exact vs prefix model ID dispatch
 - unknown model reject and explicit OpenAI/OpenRouter passthrough policy

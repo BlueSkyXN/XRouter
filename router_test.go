@@ -75,6 +75,34 @@ func TestRequestBypassTargetOverride(t *testing.T) {
 	}
 }
 
+func TestRequestOverrideRoutingTargetsLimitRejectsLargeLists(t *testing.T) {
+	cfg := Config{
+		RequestOverrides: RequestOverrideConfig{Enabled: true, MaxRoutingTargets: 2},
+		Providers: map[string]ProviderConfig{
+			"p": {BaseURL: "http://example.invalid/v1", Supports: []string{"chat"}},
+		},
+		Targets: map[string]TargetConfig{
+			"a": {Provider: "p", Model: "a"},
+			"b": {Provider: "p", Model: "b"},
+			"c": {Provider: "p", Model: "c"},
+		},
+		Routes: map[string]RouteConfig{
+			"xrouter/auto": {Type: "auto", Candidates: []string{"a", "b", "c"}},
+		},
+	}
+	cfg.applyDefaults()
+	s := NewServer(cfg)
+	body := map[string]any{
+		"model":    "xrouter/auto",
+		"messages": []any{map[string]any{"role": "user", "content": "hi"}},
+		"xrouter":  map[string]any{"candidates": []any{"a", "b", "c"}},
+	}
+	r := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	if _, err := s.resolve("xrouter/auto", body, APIChat, r); err == nil || !strings.Contains(err.Error(), "max 2") {
+		t.Fatalf("expected max_routing_targets error, got %v", err)
+	}
+}
+
 func TestUnknownModelPolicyRejectDoesNotPassthrough(t *testing.T) {
 	cfg := Config{
 		Providers: map[string]ProviderConfig{

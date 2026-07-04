@@ -58,7 +58,10 @@ func TestPrefixCacheBookkeepingCanChangeSmartOrder(t *testing.T) {
 	body := map[string]any{"model": "xrouter/auto", "messages": []any{map[string]any{"role": "user", "content": "same long prefix for cache affinity"}}}
 	r := httptest.NewRequest("POST", "/v1/chat/completions", nil)
 	route := s.cfg.Routes["xrouter/auto"]
-	controls := s.controlsFromRequest(r, body)
+	controls, err := s.controlsFromRequest(r, body)
+	if err != nil {
+		t.Fatal(err)
+	}
 	key, ok := s.prefixBK.PrefixKey(body, APIChat, route, controls)
 	if !ok {
 		t.Fatal("expected prefix key")
@@ -75,7 +78,10 @@ func TestRuntimeFailuresDemoteCircuitOpenTarget(t *testing.T) {
 	body := map[string]any{"model": "xrouter/auto", "messages": []any{map[string]any{"role": "user", "content": "solve a hard architecture problem"}}}
 	r := httptest.NewRequest("POST", "/v1/chat/completions", nil)
 	route := s.cfg.Routes["xrouter/auto"]
-	controls := s.controlsFromRequest(r, body)
+	controls, err := s.controlsFromRequest(r, body)
+	if err != nil {
+		t.Fatal(err)
+	}
 	before := s.routeCandidates(route, body, APIChat, "", r, controls)
 	if len(before) == 0 || before[0] != "smart" {
 		t.Fatalf("test setup expected smart first before failures, got %v", before)

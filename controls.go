@@ -1,22 +1,37 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 )
 
-func (s *Server) controlsFromRequest(r *http.Request, body map[string]any) XRouterControls {
+func (s *Server) controlsFromRequest(r *http.Request, body map[string]any) (XRouterControls, error) {
 	var c XRouterControls
 	if !s.cfg.RequestOverrides.Enabled {
-		return c
+		return c, nil
 	}
 	x := requestExtension(body)
 	c.Route = firstNonEmpty(stringFromAny(x["route"]), r.Header.Get("x-xrouter-route"))
 	c.Mode = normalizeMode(firstNonEmpty(stringFromAny(x["mode"]), r.Header.Get("x-xrouter-mode")))
 	c.Target = firstNonEmpty(stringFromAny(x["target"]), r.Header.Get("x-xrouter-target"))
-	c.Targets = firstNonEmptyList(listFromAny(x["targets"]), splitCSV(r.Header.Get("x-xrouter-targets")))
-	c.Candidates = firstNonEmptyList(listFromAny(x["candidates"]), splitCSV(r.Header.Get("x-xrouter-candidates")))
-	c.References = firstNonEmptyList(listFromAny(x["references"]), splitCSV(r.Header.Get("x-xrouter-references")))
+	var err error
+	maxRoutingTargets := s.cfg.RequestOverrides.MaxRoutingTargets
+	if maxRoutingTargets <= 0 {
+		maxRoutingTargets = 32
+	}
+	c.Targets, err = boundedControlList("targets", firstNonEmptyList(listFromAny(x["targets"]), splitCSV(r.Header.Get("x-xrouter-targets"))), maxRoutingTargets)
+	if err != nil {
+		return c, err
+	}
+	c.Candidates, err = boundedControlList("candidates", firstNonEmptyList(listFromAny(x["candidates"]), splitCSV(r.Header.Get("x-xrouter-candidates"))), maxRoutingTargets)
+	if err != nil {
+		return c, err
+	}
+	c.References, err = boundedControlList("references", firstNonEmptyList(listFromAny(x["references"]), splitCSV(r.Header.Get("x-xrouter-references"))), maxRoutingTargets)
+	if err != nil {
+		return c, err
+	}
 	c.Aggregator = firstNonEmpty(stringFromAny(x["aggregator"]), r.Header.Get("x-xrouter-aggregator"))
 	c.Objective = strings.ToLower(firstNonEmpty(stringFromAny(x["objective"]), r.Header.Get("x-xrouter-objective")))
 	c.MultiModel = normalizeMultiModel(firstNonEmpty(stringFromAny(x["multi_model"]), r.Header.Get("x-xrouter-multi-model")))
@@ -29,13 +44,19 @@ func (s *Server) controlsFromRequest(r *http.Request, body map[string]any) XRout
 		b := boolFromAny(v)
 		c.JudgeEnabled = &b
 	}
-	c.ShadowTargets = firstNonEmptyList(listFromAny(x["shadow_targets"]), splitCSV(r.Header.Get("x-xrouter-shadow-targets")))
-	c.ListenerTargets = firstNonEmptyList(listFromAny(x["listener_targets"]), splitCSV(r.Header.Get("x-xrouter-listener-targets")))
+	c.ShadowTargets, err = boundedControlList("shadow_targets", firstNonEmptyList(listFromAny(x["shadow_targets"]), splitCSV(r.Header.Get("x-xrouter-shadow-targets"))), s.cfg.RequestOverrides.MaxShadowTargets)
+	if err != nil {
+		return c, err
+	}
+	c.ListenerTargets, err = boundedControlList("listener_targets", firstNonEmptyList(listFromAny(x["listener_targets"]), splitCSV(r.Header.Get("x-xrouter-listener-targets"))), s.cfg.RequestOverrides.MaxListenerTargets)
+	if err != nil {
+		return c, err
+	}
 	c.IncludeListenerOutput = boolFromAny(x["include_listener_output"]) || headerBool(r, "x-xrouter-include-listeners")
 	c.DisableListeners = boolFromAny(x["disable_listeners"]) || headerBool(r, "x-xrouter-disable-listeners")
 	c.DisableShadow = boolFromAny(x["disable_shadow"]) || headerBool(r, "x-xrouter-disable-shadow")
 	c.ProviderAPIKeys = mapStringStringFromAny(x["provider_api_keys"])
-	return c
+	return c, nil
 }
 
 func applyControlsToRoute(route RouteConfig, c XRouterControls) RouteConfig {
@@ -118,6 +139,17 @@ func firstNonEmptyList(lists ...[]string) []string {
 		}
 	}
 	return nil
+}
+
+func boundedControlList(name string, xs []string, max int) ([]string, error) {
+	xs = uniqueStrings(xs)
+	if max <= 0 {
+		max = 1
+	}
+	if len(xs) > max {
+		return nil, fmt.Errorf("request override %s has %d entries, max %d", name, len(xs), max)
+	}
+	return xs, nil
 }
 
 func splitCSV(s string) []string {
