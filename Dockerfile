@@ -1,5 +1,5 @@
 ARG GO_VERSION=1.23
-FROM golang:${GO_VERSION}-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS build
 WORKDIR /src
 ARG VERSION=dev
 ARG COMMIT=unknown
