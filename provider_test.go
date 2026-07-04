@@ -147,6 +147,7 @@ func TestPrepareBodyTranslatesOnlyInternalOpenAIReasoningEffort(t *testing.T) {
 	}
 	internal := cloneTopLevelJSONMap(body)
 	internal[internalReasoningEffortKey] = true
+	internal[internalProviderAPIKeysKey] = map[string]string{"openai": "secret-key"}
 	up = prepareBodyForTarget(internal, TargetConfig{Provider: "openai", Model: "gpt"}, ProviderConfig{}, APIChat)
 	if up["reasoning_effort"] != "high" {
 		t.Fatalf("expected internal reasoning_effort=high, got %#v", up["reasoning_effort"])
@@ -157,8 +158,33 @@ func TestPrepareBodyTranslatesOnlyInternalOpenAIReasoningEffort(t *testing.T) {
 	if _, ok := up[internalReasoningEffortKey]; ok {
 		t.Fatalf("internal translation marker leaked upstream: %#v", up)
 	}
+	if _, ok := up[internalProviderAPIKeysKey]; ok {
+		t.Fatalf("internal provider key marker leaked upstream: %#v", up)
+	}
 	or := prepareBodyForTarget(body, TargetConfig{Provider: "openrouter", Model: "or-model"}, ProviderConfig{}, APIChat)
 	if _, ok := or["reasoning"].(map[string]any); !ok {
 		t.Fatalf("expected non-OpenAI reasoning object to be preserved, got %#v", or["reasoning"])
+	}
+}
+
+func TestListenerPromptRedactsRequestSecrets(t *testing.T) {
+	original := map[string]any{
+		"model":    "xrouter/t",
+		"messages": []any{map[string]any{"role": "user", "content": "hi"}},
+		"xrouter": map[string]any{
+			"provider_api_keys": map[string]any{"p": "body-secret"},
+		},
+		internalProviderAPIKeysKey: map[string]string{"p": "internal-secret"},
+	}
+	primary := UpstreamResult{TargetName: "t", Target: TargetConfig{Model: "upstream"}, Status: http.StatusOK, Body: []byte(`{"choices":[{"message":{"content":"ok"}}]}`)}
+	body := buildListenerBody(original, RouteDecision{RouteName: "xrouter/t"}, APIChat, primary, ListenerConfig{Target: "listener"})
+	msgs := body["messages"].([]any)
+	user := msgs[1].(map[string]any)
+	content := user["content"].(string)
+	if strings.Contains(content, "body-secret") || strings.Contains(content, "internal-secret") {
+		t.Fatalf("listener prompt leaked provider key material: %s", content)
+	}
+	if !strings.Contains(content, "[redacted]") {
+		t.Fatalf("expected listener prompt to include redaction marker, got %s", content)
 	}
 }

@@ -13,7 +13,10 @@ import (
 	"time"
 )
 
-const internalReasoningEffortKey = "_xrouter_internal_reasoning_effort"
+const (
+	internalReasoningEffortKey = "_xrouter_internal_reasoning_effort"
+	internalProviderAPIKeysKey = "_xrouter_internal_provider_api_keys"
+)
 
 func (s *Server) targetByName(name string) (TargetConfig, bool) {
 	if t, ok := s.configuredTargetByName(name); ok {
@@ -170,6 +173,7 @@ func prepareBodyForTarget(body map[string]any, target TargetConfig, provider Pro
 	up := cloneTopLevelJSONMap(body)
 	translateInternalReasoning := boolFromAny(up[internalReasoningEffortKey])
 	delete(up, internalReasoningEffortKey)
+	delete(up, internalProviderAPIKeysKey)
 	delete(up, "xrouter")
 	for k, v := range target.ExtraBody {
 		up[k] = v
@@ -314,6 +318,20 @@ func providerAPIKeyOverride(incoming *http.Request, body map[string]any, provide
 		}
 	}
 	if m, ok := x["provider_keys"].(map[string]any); ok {
+		for k, v := range m {
+			if strings.EqualFold(strings.TrimSpace(k), providerName) {
+				return stringFromAny(v)
+			}
+		}
+	}
+	if m, ok := body[internalProviderAPIKeysKey].(map[string]string); ok {
+		for k, v := range m {
+			if strings.EqualFold(strings.TrimSpace(k), providerName) {
+				return strings.TrimSpace(v)
+			}
+		}
+	}
+	if m, ok := body[internalProviderAPIKeysKey].(map[string]any); ok {
 		for k, v := range m {
 			if strings.EqualFold(strings.TrimSpace(k), providerName) {
 				return stringFromAny(v)

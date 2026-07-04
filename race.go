@@ -238,7 +238,6 @@ func buildRacePlans(route RouteConfig) []racePlan {
 func bodyWithRaceVariant(body map[string]any, effort string) map[string]any {
 	out := cloneTopLevelJSONMap(body)
 	out["stream"] = false
-	delete(out, "xrouter")
 	if strings.TrimSpace(effort) != "" {
 		reasoning := map[string]any{"effort": strings.TrimSpace(effort)}
 		if existing, ok := out["reasoning"].(map[string]any); ok {

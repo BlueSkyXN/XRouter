@@ -183,3 +183,57 @@ func isHopByHopHeader(name string) bool {
 		return false
 	}
 }
+
+func promptSafeJSON(v any) string {
+	return compactJSON(sanitizeForPrompt(v))
+}
+
+func sanitizeForPrompt(v any) any {
+	switch x := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, vv := range x {
+			if sensitivePromptKey(k) {
+				out[k] = "[redacted]"
+				continue
+			}
+			out[k] = sanitizeForPrompt(vv)
+		}
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, vv := range x {
+			out[i] = sanitizeForPrompt(vv)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+func sensitivePromptKey(key string) bool {
+	k := strings.ToLower(strings.TrimSpace(key))
+	if k == "xrouter" || k == internalProviderAPIKeysKey || k == internalReasoningEffortKey {
+		return true
+	}
+	for _, marker := range []string{
+		"api_key",
+		"api-key",
+		"apikey",
+		"provider_key",
+		"provider-key",
+		"provider_api_keys",
+		"provider_keys",
+		"authorization",
+		"access_token",
+		"refresh_token",
+		"bearer",
+		"secret",
+		"password",
+	} {
+		if strings.Contains(k, marker) {
+			return true
+		}
+	}
+	return false
+}

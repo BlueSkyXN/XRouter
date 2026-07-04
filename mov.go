@@ -396,7 +396,6 @@ func syntheticChatResult(targetName, model, text, route string) UpstreamResult {
 func withSystem(body map[string]any, prompt string) map[string]any {
 	out := cloneTopLevelJSONMap(body)
 	out["stream"] = false
-	delete(out, "xrouter")
 	msgs, _ := out["messages"].([]any)
 	out["messages"] = append([]any{map[string]any{"role": "system", "content": prompt}}, msgs...)
 	return out

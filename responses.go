@@ -27,7 +27,7 @@ func (s *Server) handleResponsesDirectLike(w http.ResponseWriter, r *http.Reques
 	}
 	if len(nativeTargets) > 0 {
 		nd := decision
-		nd.TargetNames = append(nativeTargets, shimTargets...)
+		nd.TargetNames = nativeTargets
 		if stream {
 			s.handleStreamWithFallback(w, r, body, nd, APIResponses, sessionIDWithControls(r, body, decision.Controls))
 			return
@@ -103,6 +103,12 @@ func responsesToChatBody(body map[string]any) (map[string]any, error) {
 		if v, ok := body[k]; ok {
 			chat[k] = v
 		}
+	}
+	if v, ok := body["xrouter"]; ok {
+		chat["xrouter"] = v
+	}
+	if v, ok := body[internalProviderAPIKeysKey]; ok {
+		chat[internalProviderAPIKeysKey] = v
 	}
 	if v, ok := body["max_output_tokens"]; ok {
 		chat["max_tokens"] = v

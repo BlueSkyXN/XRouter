@@ -55,7 +55,10 @@ func (s *Server) controlsFromRequest(r *http.Request, body map[string]any) (XRou
 	c.IncludeListenerOutput = boolFromAny(x["include_listener_output"]) || headerBool(r, "x-xrouter-include-listeners")
 	c.DisableListeners = boolFromAny(x["disable_listeners"]) || headerBool(r, "x-xrouter-disable-listeners")
 	c.DisableShadow = boolFromAny(x["disable_shadow"]) || headerBool(r, "x-xrouter-disable-shadow")
-	c.ProviderAPIKeys = mapStringStringFromAny(x["provider_api_keys"])
+	c.ProviderAPIKeys = providerAPIKeysFromExtension(x)
+	if len(c.ProviderAPIKeys) > 0 {
+		body[internalProviderAPIKeysKey] = c.ProviderAPIKeys
+	}
 	return c, nil
 }
 
@@ -211,6 +214,16 @@ func mapStringStringFromAny(v any) map[string]string {
 	for k, vv := range m {
 		if s := stringFromAny(vv); s != "" {
 			out[strings.ToLower(strings.TrimSpace(k))] = s
+		}
+	}
+	return out
+}
+
+func providerAPIKeysFromExtension(x map[string]any) map[string]string {
+	out := mapStringStringFromAny(x["provider_api_keys"])
+	for k, v := range mapStringStringFromAny(x["provider_keys"]) {
+		if _, exists := out[k]; !exists {
+			out[k] = v
 		}
 	}
 	return out
