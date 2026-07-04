@@ -43,7 +43,7 @@ Use this file as the deployment baseline, then create an environment-specific co
 | `read_header_timeout_ms` | HTTP server read-header timeout. |
 | `max_request_body_bytes` | Maximum JSON request body size for API handlers. |
 | `max_upstream_body_bytes` | Maximum non-streaming upstream response body size. Exceeding this fails the attempt instead of buffering unbounded data. |
-| `debug` | Enables more verbose local behavior where implemented. |
+| `debug` | Enables debug endpoints such as `/debug/prefix-cache`. Keep this `false` for shared deployments unless the endpoint is protected by API keys and intentionally exposed. |
 
 ## Auth
 
@@ -56,7 +56,7 @@ Use this file as the deployment baseline, then create an environment-specific co
 
 If no API keys are configured, XRouter accepts unauthenticated requests. This is convenient for local development but unsafe for shared or public deployments because upstream provider credentials may be consumed by anyone who can reach the gateway. For shared environments, set `XROUTER_API_KEYS` to a comma-separated allowlist.
 
-When API keys are configured, `/v1/chat/completions`, `/v1/responses`, `/v1/models`, `/debug/prefix-cache`, and `/metrics` require the same bearer token. `/healthz` remains unauthenticated for liveness checks.
+When API keys are configured, `/v1/chat/completions`, `/v1/responses`, `/v1/models`, enabled debug endpoints such as `/debug/prefix-cache`, and `/metrics` require the same bearer token. `/healthz` remains unauthenticated for liveness checks.
 
 ```bash
 export XROUTER_API_KEYS=dev-key-1,dev-key-2
@@ -164,7 +164,7 @@ Route target references still validate configured target names. Under a passthro
 }
 ```
 
-Prefix cache is routing bookkeeping, not response caching. XRouter hashes the configured prompt prefix window and stores target/provider metadata plus cached-token evidence; it does not store raw prompt prefixes. `update_from_usage` defaults to `true`; set it to `false` to keep prefix-cache scoring enabled for existing in-memory entries while preventing new updates from upstream usage telemetry.
+Prefix cache is routing bookkeeping, not response caching. XRouter hashes the configured prompt prefix window and stores target/provider metadata plus cached-token evidence; it does not store raw prompt prefixes. If `hash_salt` is empty or left as `replace-me-per-deployment`, XRouter replaces it with a process-local random salt at startup; set an explicit high-entropy deployment salt only when stable hash keys are intentionally required. `update_from_usage` defaults to `true`; set it to `false` to keep prefix-cache scoring enabled for existing in-memory entries while preventing new updates from upstream usage telemetry.
 
 ## Route kinds
 
@@ -242,6 +242,8 @@ Multi-model orchestration route.
   "allow_partial": true
 }
 ```
+
+Use the named `flow` implementations documented in `docs/STRATEGIES.md`. The generic `stages` array is reserved for a future stage DSL and is rejected by config validation in this release rather than being silently ignored.
 
 ## Race / degradation guard
 
@@ -334,7 +336,7 @@ x-xrouter-provider-key-openai: sk-...
 x-xrouter-provider-key-openrouter: sk-or-...
 ```
 
-Only enable provider key override when the caller trust boundary is clear. In hosted shared deployments, prefer server-side provider credentials plus XRouter API keys, or disable `request_overrides.allow_provider_key_override`.
+`config.example.json` keeps `request_overrides.allow_provider_key_override=false`. Only enable provider key override when the caller trust boundary is clear. In hosted shared deployments, prefer server-side provider credentials plus XRouter API keys.
 
 ## Dry-run
 

@@ -50,7 +50,9 @@ func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/metrics", s.withAuth(s.metrics.Handler))
-	mux.HandleFunc("/debug/prefix-cache", s.withAuth(s.handlePrefixCacheSnapshot))
+	if s.cfg.Server.Debug {
+		mux.HandleFunc("/debug/prefix-cache", s.withAuth(s.handlePrefixCacheSnapshot))
+	}
 	mux.HandleFunc("/v1/models", s.withAuth(s.handleModels))
 	mux.HandleFunc("/v1/chat/completions", s.withAuth(s.handleChat))
 	mux.HandleFunc("/v1/responses", s.withAuth(s.handleResponses))

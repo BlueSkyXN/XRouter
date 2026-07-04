@@ -40,7 +40,7 @@ flowchart TD
 
 | Component | Responsibility |
 |---|---|
-| Go HTTP server | Exposes `/v1/chat/completions`, `/v1/responses`, `/v1/models`, health, metrics, debug endpoints. |
+| Go HTTP server | Exposes `/v1/chat/completions`, `/v1/responses`, `/v1/models`, health, metrics, and optional debug endpoints. |
 | Strategy resolver | Converts request `model` into a configured route. Exact match wins over prefix match. |
 | Provider client | Sends OpenAI-compatible requests to OpenAI, OpenRouter, or custom providers. |
 | Smart router | Hard-filters candidates, then scores and selects one target. |

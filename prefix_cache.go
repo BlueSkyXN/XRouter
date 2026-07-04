@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -27,7 +28,24 @@ type PrefixCacheEntry struct {
 }
 
 func NewPrefixCacheStore(cfg PrefixCacheConfig) *PrefixCacheStore {
+	if weakPrefixHashSalt(cfg.HashSalt) {
+		cfg.HashSalt = runtimePrefixHashSalt()
+	}
 	return &PrefixCacheStore{cfg: cfg, entries: map[string]map[string]*PrefixCacheEntry{}}
+}
+
+func weakPrefixHashSalt(s string) bool {
+	s = strings.TrimSpace(s)
+	return s == "" || s == "replace-me-per-deployment"
+}
+
+func runtimePrefixHashSalt() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err == nil {
+		return hex.EncodeToString(b[:])
+	}
+	fallback := sha256.Sum256([]byte(time.Now().UTC().Format(time.RFC3339Nano)))
+	return hex.EncodeToString(fallback[:])
 }
 
 func (p *PrefixCacheStore) Enabled(route RouteConfig, controls XRouterControls) bool {

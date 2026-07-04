@@ -62,3 +62,15 @@ func TestPrefixCacheUpdateFromUsageCanBeDisabled(t *testing.T) {
 		t.Fatalf("expected no prefix-cache entries when update_from_usage=false, got %+v", got)
 	}
 }
+
+func TestPrefixCacheReplacesPlaceholderHashSalt(t *testing.T) {
+	store := NewPrefixCacheStore(PrefixCacheConfig{HashSalt: "replace-me-per-deployment"})
+	if store.cfg.HashSalt == "" || store.cfg.HashSalt == "replace-me-per-deployment" {
+		t.Fatalf("expected runtime salt to replace placeholder, got %q", store.cfg.HashSalt)
+	}
+
+	explicit := NewPrefixCacheStore(PrefixCacheConfig{HashSalt: "deployment-secret"})
+	if explicit.cfg.HashSalt != "deployment-secret" {
+		t.Fatalf("expected explicit hash salt to be preserved, got %q", explicit.cfg.HashSalt)
+	}
+}

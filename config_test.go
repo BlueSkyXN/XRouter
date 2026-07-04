@@ -8,6 +8,19 @@ func TestLoadConfigAcceptsExample(t *testing.T) {
 	}
 }
 
+func TestExampleConfigKeepsSensitiveSurfacesClosed(t *testing.T) {
+	cfg, err := LoadConfig("config.example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Server.Debug {
+		t.Fatal("expected config.example.json to keep server.debug=false")
+	}
+	if cfg.RequestOverrides.AllowProviderKeyOverride {
+		t.Fatal("expected config.example.json to keep allow_provider_key_override=false")
+	}
+}
+
 func TestConfigValidationRejectsMissingRouteTarget(t *testing.T) {
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
@@ -85,5 +98,27 @@ func TestConfigValidationRejectsPassthroughRouteWithoutProviderPolicy(t *testing
 	cfg.applyDefaults()
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected passthrough route without target or passthrough provider policy to fail validation")
+	}
+}
+
+func TestConfigValidationRejectsReservedMoVStages(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"p": {BaseURL: "http://example.invalid/v1", Supports: []string{"chat"}},
+		},
+		Targets: map[string]TargetConfig{
+			"t": {Provider: "p", Model: "m"},
+		},
+		Routes: map[string]RouteConfig{
+			"xrouter/mov/staged": {
+				Type:   "mov",
+				Flow:   "parallel_synthesize_v1",
+				Stages: []MoVStage{{Name: "draft", Targets: []string{"t"}}},
+			},
+		},
+	}
+	cfg.applyDefaults()
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected reserved mov stages to fail validation")
 	}
 }

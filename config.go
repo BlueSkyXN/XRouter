@@ -96,8 +96,11 @@ func (c Config) Validate() error {
 			if route.Flow != "" && !isSupportedMoVFlow(route.Flow) {
 				problems = append(problems, fmt.Sprintf("%s uses unsupported mov flow %q", ctx, route.Flow))
 			}
+			if len(route.Stages) > 0 {
+				problems = append(problems, fmt.Sprintf("%s mov stages are reserved and not executable in this release", ctx))
+			}
 			if len(movPrimaryTargets(route)) == 0 {
-				problems = append(problems, fmt.Sprintf("%s mov route requires at least one target, candidate, reference, aggregator, fallback, or stage target", ctx))
+				problems = append(problems, fmt.Sprintf("%s mov route requires at least one target, candidate, reference, aggregator, or fallback", ctx))
 			}
 			c.validateTargetRef(route.Target, ctx+".target", &problems)
 			c.validateTargetRefs(route.Candidates, ctx+".candidates", &problems)

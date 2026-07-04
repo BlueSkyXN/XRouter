@@ -111,7 +111,7 @@ curl http://127.0.0.1:8080/v1/chat/completions \
   -d @examples/chat.smart-router-dry-run.json
 ```
 
-After a real request, inspect prefix-cache state:
+After a real request, inspect prefix-cache state only when `server.debug=true`:
 
 ```bash
 curl http://127.0.0.1:8080/debug/prefix-cache

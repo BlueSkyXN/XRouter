@@ -13,7 +13,7 @@
   },
   "request_overrides": {
     "enabled": true,
-    "allow_provider_key_override": true,
+    "allow_provider_key_override": false,
     "max_routing_targets": 32,
     "max_shadow_targets": 4,
     "max_listener_targets": 4

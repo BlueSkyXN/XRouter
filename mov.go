@@ -15,9 +15,6 @@ func movPrimaryTargets(route RouteConfig) []string {
 	out = append(out, route.References...)
 	out = append(out, route.Aggregator)
 	out = append(out, route.Fallbacks...)
-	for _, st := range route.Stages {
-		out = append(out, st.Targets...)
-	}
 	return uniqueStrings(out)
 }
 

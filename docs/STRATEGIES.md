@@ -115,6 +115,8 @@ The smart router treats judge scores as one weighted signal, not as an absolute 
 
 ## MoV / MoA flows
 
+XRouter currently exposes named flow implementations through `flow`. The generic route-level `stages` array is reserved for a future stage DSL and is rejected by config validation in this release, so production configs should use the explicit flow fields below instead of expecting arbitrary stage execution.
+
 ### 1. Parallel synthesize
 
 ```mermaid

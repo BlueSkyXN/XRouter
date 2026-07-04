@@ -496,3 +496,50 @@ func TestMetricsUsesConfiguredAPIKeys(t *testing.T) {
 		t.Fatalf("expected authenticated metrics to return 200, got %d: %s", authorizedRec.Code, authorizedRec.Body.String())
 	}
 }
+
+func TestDebugPrefixCacheDisabledUnlessConfigured(t *testing.T) {
+	cfg := Config{}
+	cfg.applyDefaults()
+	s := NewServer(cfg)
+	handler := s.routes()
+
+	disabledReq := httptest.NewRequest("GET", "/debug/prefix-cache", nil)
+	disabledRec := httptest.NewRecorder()
+	handler.ServeHTTP(disabledRec, disabledReq)
+	if disabledRec.Code != http.StatusNotFound {
+		t.Fatalf("expected debug prefix-cache endpoint to be hidden by default, got %d", disabledRec.Code)
+	}
+
+	cfg.Server.Debug = true
+	s = NewServer(cfg)
+	handler = s.routes()
+
+	enabledReq := httptest.NewRequest("GET", "/debug/prefix-cache", nil)
+	enabledRec := httptest.NewRecorder()
+	handler.ServeHTTP(enabledRec, enabledReq)
+	if enabledRec.Code != http.StatusOK {
+		t.Fatalf("expected debug prefix-cache endpoint when server.debug=true, got %d: %s", enabledRec.Code, enabledRec.Body.String())
+	}
+}
+
+func TestDebugPrefixCacheUsesConfiguredAPIKeys(t *testing.T) {
+	cfg := Config{Server: ServerConfig{Debug: true}, Auth: AuthConfig{APIKeys: []string{"secret"}}}
+	cfg.applyDefaults()
+	s := NewServer(cfg)
+	handler := s.routes()
+
+	unauthorizedReq := httptest.NewRequest("GET", "/debug/prefix-cache", nil)
+	unauthorizedRec := httptest.NewRecorder()
+	handler.ServeHTTP(unauthorizedRec, unauthorizedReq)
+	if unauthorizedRec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthenticated debug prefix-cache to return 401, got %d", unauthorizedRec.Code)
+	}
+
+	authorizedReq := httptest.NewRequest("GET", "/debug/prefix-cache", nil)
+	authorizedReq.Header.Set("Authorization", "Bearer secret")
+	authorizedRec := httptest.NewRecorder()
+	handler.ServeHTTP(authorizedRec, authorizedReq)
+	if authorizedRec.Code != http.StatusOK {
+		t.Fatalf("expected authenticated debug prefix-cache to return 200, got %d: %s", authorizedRec.Code, authorizedRec.Body.String())
+	}
+}

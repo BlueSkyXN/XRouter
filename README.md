@@ -36,10 +36,10 @@ POST /v1/responses
 GET  /v1/models
 GET  /healthz
 GET  /metrics
-GET  /debug/prefix-cache
+GET  /debug/prefix-cache   # only when server.debug=true
 ```
 
-当配置了 `XROUTER_API_KEYS` 或 inline API keys 后，除 `/healthz` 外，API、debug、metrics endpoint 都要求：
+当配置了 `XROUTER_API_KEYS` 或 inline API keys 后，除 `/healthz` 外，API、已启用的 debug、metrics endpoint 都要求：
 
 ```text
 Authorization: Bearer <xrouter-api-key>
@@ -129,7 +129,7 @@ docker run --rm -p 8080:8080 \
 
 ## 生产部署安全基线
 
-`config.example.json` 用于本地可运行示例。共享或公开部署时，应设置 XRouter 自己的 API key，并把 provider key 放在环境变量中：
+`config.example.json` 用于本地可运行示例，并默认关闭 provider key request override。共享或公开部署时，应设置 XRouter 自己的 API key，并把 provider key 放在环境变量中：
 
 ```bash
 export XROUTER_API_KEYS=team-key-1,team-key-2
@@ -145,7 +145,7 @@ Authorization: Bearer team-key-1
 
 不要提交 `.env*`、`config.local.json`、`*.local.json`、真实 token、内部 URL、客户数据或个人信息。
 
-如果对不完全可信的调用方开放 request overrides，请保留 `max_routing_targets`、`max_shadow_targets` 和 `max_listener_targets` 这类上界；共享托管场景通常还应关闭 `allow_provider_key_override`，只使用服务端 provider credentials。
+如果对不完全可信的调用方开放 request overrides，请保留 `max_routing_targets`、`max_shadow_targets` 和 `max_listener_targets` 这类上界；共享托管场景应保持 `allow_provider_key_override=false`，只使用服务端 provider credentials。
 
 ## GitHub Actions
 
