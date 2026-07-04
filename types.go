@@ -134,7 +134,7 @@ type PrefixCacheConfig struct {
 	MinPrefixChars     int    `json:"min_prefix_chars"`
 	HashSalt           string `json:"hash_salt"`
 	RecencyHalfLifeSec int    `json:"recency_half_life_seconds"`
-	UpdateFromUsage    bool   `json:"update_from_usage"`
+	UpdateFromUsage    *bool  `json:"update_from_usage"`
 }
 
 type PrefixCacheRouteConfig struct {
@@ -296,6 +296,10 @@ func (c *Config) applyDefaults() {
 	}
 	if c.PrefixCache.RecencyHalfLifeSec <= 0 {
 		c.PrefixCache.RecencyHalfLifeSec = 1800
+	}
+	if c.PrefixCache.UpdateFromUsage == nil {
+		enabled := true
+		c.PrefixCache.UpdateFromUsage = &enabled
 	}
 	if c.Providers == nil {
 		c.Providers = map[string]ProviderConfig{}

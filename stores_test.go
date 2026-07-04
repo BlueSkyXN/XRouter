@@ -37,3 +37,28 @@ func TestPrefixCacheEvictsInBatchesWhenBounded(t *testing.T) {
 		t.Fatalf("expected snapshot size <= 5, got %d", total)
 	}
 }
+
+func TestPrefixCacheUpdateFromUsageCanBeDisabled(t *testing.T) {
+	disabled := false
+	cfg := Config{
+		PrefixCache: PrefixCacheConfig{Enabled: true, MinPrefixChars: 1, PrefixChars: 64, TTLSeconds: 3600, UpdateFromUsage: &disabled},
+		Providers:   map[string]ProviderConfig{"p": {BaseURL: "http://example.invalid/v1", Supports: []string{"chat"}}},
+		Targets:     map[string]TargetConfig{"t": {Provider: "p", Model: "m"}},
+	}
+	cfg.applyDefaults()
+	s := NewServer(cfg)
+	body := map[string]any{"messages": []any{map[string]any{"role": "user", "content": "cacheable prefix"}}}
+	decision := RouteDecision{RouteName: "r", Route: RouteConfig{Type: "direct", Target: "t"}}
+	res := UpstreamResult{
+		TargetName: "t",
+		Target:     cfg.Targets["t"],
+		Status:     200,
+		Body:       []byte(`{"usage":{"prompt_tokens_details":{"cached_tokens":123}}}`),
+	}
+
+	s.updatePrefixCache(body, decision, APIChat, res)
+
+	if got := s.prefixBK.Snapshot(); len(got) != 0 {
+		t.Fatalf("expected no prefix-cache entries when update_from_usage=false, got %+v", got)
+	}
+}

@@ -73,6 +73,13 @@ func getBool(m map[string]any, key string) bool {
 	return false
 }
 
+func boolPtrValue(v *bool, fallback bool) bool {
+	if v == nil {
+		return fallback
+	}
+	return *v
+}
+
 func randomID(prefix string) string {
 	var b [12]byte
 	if _, err := rand.Read(b[:]); err != nil {

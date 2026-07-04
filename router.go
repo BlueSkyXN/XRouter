@@ -415,6 +415,9 @@ func (s *Server) updatePrefixCache(body map[string]any, decision RouteDecision, 
 	if res.TargetName == "" || s.prefixBK == nil || !s.prefixBK.Enabled(decision.Route, decision.Controls) {
 		return
 	}
+	if !boolPtrValue(s.cfg.PrefixCache.UpdateFromUsage, true) {
+		return
+	}
 	key, ok := s.prefixBK.PrefixKey(body, kind, decision.Route, decision.Controls)
 	if !ok {
 		return

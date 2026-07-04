@@ -59,6 +59,9 @@ func TestApplyDefaultsSetsRequestOverrideBounds(t *testing.T) {
 	if got := cfg.RequestOverrides.MaxListenerTargets; got != 4 {
 		t.Fatalf("expected default max listener targets 4, got %d", got)
 	}
+	if got := boolPtrValue(cfg.PrefixCache.UpdateFromUsage, false); !got {
+		t.Fatal("expected prefix cache update_from_usage to default true")
+	}
 }
 
 func TestEffectiveParallelismDefaultsToWorkItems(t *testing.T) {

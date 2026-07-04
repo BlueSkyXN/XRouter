@@ -149,6 +149,23 @@ Passthrough is explicit. With `reject`, slash-style model IDs such as `anthropic
 
 Route target references still validate configured target names. Under a passthrough policy, only explicit provider/model-style references such as `anthropic/claude-...` are treated as passthrough; plain typos like `opnai-smart` fail startup validation.
 
+## Prefix cache bookkeeping
+
+```json
+"prefix_cache": {
+  "enabled": true,
+  "max_entries": 4096,
+  "ttl_seconds": 86400,
+  "prefix_chars": 4096,
+  "min_prefix_chars": 128,
+  "hash_salt": "replace-me-per-deployment",
+  "recency_half_life_seconds": 1800,
+  "update_from_usage": true
+}
+```
+
+Prefix cache is routing bookkeeping, not response caching. XRouter hashes the configured prompt prefix window and stores target/provider metadata plus cached-token evidence; it does not store raw prompt prefixes. `update_from_usage` defaults to `true`; set it to `false` to keep prefix-cache scoring enabled for existing in-memory entries while preventing new updates from upstream usage telemetry.
+
 ## Route kinds
 
 ### `direct_alias`

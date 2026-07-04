@@ -40,6 +40,7 @@ The Go test suite covers:
 - startup config validation for target references and passthrough routes
 - Responses shim preservation of Chat Completions tool calls
 - prefix-cache bookkeeping influence on smart-router ordering
+- `prefix_cache.update_from_usage=false` disabling telemetry-driven updates
 - MoV route materialization
 - auto route conditional MoA escalation
 - request bypass target override
