@@ -22,6 +22,8 @@ XRouter 是一个自托管的 OpenAI-compatible LLM 路由控制层。它不是 
 | `Dockerfile` / `.dockerignore` | Container build and runtime image | No | 修改 container entrypoint、base image、copied files、ports 或 build args 时 |
 | `.github/` | CI, release, binary packaging, GitHub Release and GHCR publishing | Yes | 修改任何 workflow、release permission、artifact、tag/manual dispatch、GHCR 相关文件前 |
 | `docs/` | Human-facing architecture, configuration, strategy, release, testing docs | No | 修改行为、配置、API、发布流程或背景定位后，同步相关文档 |
+| `docs/README.md` | Documentation map and maintained reading order | No | 新增、删除或重命名公开文档时同步 |
+| `docs/OPERATIONS.md` | Local runbook, production baseline, smoke checks, troubleshooting | No | 修改启动、部署、安全基线、debug endpoint、Docker/runtime 行为时同步 |
 | `docs/strategy/` | Long-form Chinese strategy design material | No | 修改 strategy terminology 或 model-ID-as-strategy design 时，可参考但不要把长文复制进 README |
 | `examples/` | Request and integration examples for chat, responses, OpenCode, strategy sketches | No | 修改 route IDs、config schema、request override 字段、Responses compatibility 时 |
 | `local/` | Ignored source/archive material from earlier local/cloud packages | No | 默认不要读取或发布；只有用户明确要求追溯来源包时再进入 |
@@ -73,7 +75,16 @@ Use commands that exist in this repository. Do not invent npm, pnpm, cargo, rust
 - 新增 provider/target behavior 时，优先保持 provider-specific logic 在 `provider.go` 或 config 层，不要把 provider 特例散落到 routing algorithm。
 - 新增 route/scoring behavior 时，优先加 focused unit tests；测试不应依赖真实 OpenAI、OpenRouter 或其他外部 provider。
 - 面向用户的中文材料可以用中文说明产品定位、策略、背景和 tradeoff；代码标识、JSON key、route kind、flow name、header、env var、CLI command 保持 English。
-- README 当前以 English 为主；公开入口文档若改成双语，要保持同一事实口径，避免中英文版本出现不同 config 或命令。
+- README 当前以中文为主，`docs/` 当前以 English 为主；公开入口文档若改成双语，要保持同一事实口径，避免中英文版本出现不同 config 或命令。
+
+## Documentation maintenance
+
+- `docs/README.md` 是文档目录入口；新增、删除、重命名公开文档时必须同步它和 README 的 repository layout / 文档入口段落。
+- `docs/OPERATIONS.md` 是运行与部署入口；修改 auth、provider credentials、Docker、debug endpoint、smoke check、release boundary 或生产默认建议时必须同步。
+- `docs/CONFIGURATION.md` 是 config schema 入口；新增或修改 config key 时同步 `types.go` defaults、`config.go` validation、`config.example.json`、相关测试和该文档。
+- `docs/OPENAI_COMPATIBILITY.md` 是 northbound API contract 入口；新增 endpoint、字段映射、Responses shim 行为或 error/status 语义时必须同步。
+- `docs/RELEASING.md` 是 tag-driven release 入口；修改 release artifacts、checksums、GHCR image、workflow trigger 或 packaging layout 前先读 `.github/AGENTS.md`。
+- 文档 PR 不应声称真实 provider、Docker、release 或部署验证，除非对应命令确实运行并在 PR 描述里列出。
 
 ## Do not
 

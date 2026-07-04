@@ -63,9 +63,11 @@ Provider credentials 应优先通过环境变量注入，例如 `OPENAI_API_KEY`
 │       ├── ci.yml                # Go lint/test/build workflow
 │       └── release.yml           # tag/manual release packaging workflow
 ├── docs/
+│   ├── README.md
 │   ├── BACKGROUND.md
 │   ├── ARCHITECTURE.md
 │   ├── CONFIGURATION.md
+│   ├── OPERATIONS.md
 │   ├── RELEASING.md
 │   ├── STRATEGIES.md
 │   ├── DEGRADATION_GUARD_AND_RACE.md
@@ -81,6 +83,14 @@ Provider credentials 应优先通过环境变量注入，例如 `OPENAI_API_KEY`
 ```
 
 `local/` 是早期云端/本地包和过程材料的归档目录，默认不发布；`dist/` 是构建产物目录，默认由 Makefile 生成。
+
+## 文档入口
+
+- `docs/README.md`：文档地图、阅读顺序和文档维护规则。
+- `docs/OPERATIONS.md`：本地启动、生产部署基线、smoke checks、日志和排障。
+- `docs/CONFIGURATION.md`：配置 schema、route kind、provider/target、request override。
+- `docs/OPENAI_COMPATIBILITY.md`：OpenAI-compatible API 支持边界。
+- `docs/RELEASING.md`：tag-driven release、GitHub Release assets、GHCR 发布边界。
 
 ## 快速启动
 
