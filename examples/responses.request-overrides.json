@@ -1,0 +1,10 @@
+{
+  "model": "xrouter/auto",
+  "instructions": "Be concise.",
+  "input": "Explain when XRouter should escalate from single-model auto routing to MoA.",
+  "xrouter": {
+    "objective": "balanced",
+    "multi_model": "auto",
+    "session_id": "demo-responses-session-001"
+  }
+}

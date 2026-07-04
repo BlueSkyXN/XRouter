@@ -1,0 +1,6 @@
+{
+  "model": "xrouter/race/boundary-guard",
+  "input": "Give a rigorous migration plan for a large TypeScript monorepo to a layered package architecture.",
+  "reasoning": {"effort": "high"},
+  "max_output_tokens": 4096
+}

@@ -1,0 +1,11 @@
+{
+  "model": "xrouter/auto",
+  "messages": [
+    {"role": "user", "content": "Design a distributed task scheduler. Include failure modes and API shape."}
+  ],
+  "xrouter": {
+    "mode": "moa",
+    "references": ["openai-fast", "or-sonnet"],
+    "aggregator": "openai-smart"
+  }
+}

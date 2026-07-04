@@ -1,0 +1,7 @@
+.git
+.github
+dist
+local
+.DS_Store
+config.local.json
+*.log

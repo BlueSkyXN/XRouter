@@ -1,0 +1,12 @@
+{
+  "model": "xrouter/auto",
+  "messages": [
+    {"role": "user", "content": "Compare two distributed lock designs and pick one for high write throughput."}
+  ],
+  "xrouter": {
+    "dry_run": true,
+    "objective": "balanced",
+    "judge_enabled": true,
+    "candidates": ["openai-fast", "or-sonnet", "openai-smart"]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "model": "xrouter/code/go",
+  "messages": [
+    {"role": "system", "content": "Repository prefix: acme/backend main branch. Use the existing coding conventions."},
+    {"role": "user", "content": "The service has a deadlock during graceful shutdown. Give a diagnosis checklist."}
+  ],
+  "xrouter": {
+    "objective": "latency",
+    "cache_prefix_hint": "repo:acme/backend:main",
+    "disable_prefix_cache": false,
+    "explain": true
+  }
+}

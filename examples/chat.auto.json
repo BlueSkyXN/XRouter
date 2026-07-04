@@ -1,0 +1,7 @@
+{
+  "model": "xrouter/auto",
+  "xrouter": { "objective": "balanced" },
+  "messages": [
+    { "role": "user", "content": "Explain the tradeoff between p99 latency and model quality in an LLM router." }
+  ]
+}

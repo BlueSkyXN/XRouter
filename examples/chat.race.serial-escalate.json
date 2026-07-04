@@ -1,0 +1,7 @@
+{
+  "model": "xrouter/race/serial-escalate",
+  "stream": false,
+  "messages": [
+    {"role": "user", "content": "Produce a careful security review checklist for an OAuth device-code flow implementation."}
+  ]
+}
