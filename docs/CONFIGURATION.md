@@ -54,7 +54,7 @@ Use this file as the deployment baseline, then create an environment-specific co
 }
 ```
 
-If no API keys are configured, XRouter accepts unauthenticated requests. This is convenient for local development but unsafe for shared or public deployments because upstream provider credentials may be consumed by anyone who can reach the gateway. For shared environments, set `XROUTER_API_KEYS` to a comma-separated allowlist.
+If no API keys are configured, XRouter accepts unauthenticated requests. This is convenient for local development but unsafe for shared or public deployments because upstream provider credentials may be consumed by anyone who can reach the gateway. When provider credentials are loaded but no XRouter API keys are configured, startup logs a warning. For shared environments, set `XROUTER_API_KEYS` to a comma-separated allowlist.
 
 When API keys are configured, `/v1/chat/completions`, `/v1/responses`, `/v1/models`, enabled debug endpoints such as `/debug/prefix-cache`, and `/metrics` require the same bearer token. `/healthz` remains unauthenticated for liveness checks.
 

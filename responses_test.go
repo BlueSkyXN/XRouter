@@ -119,11 +119,73 @@ func TestResponsesNativeRetryableFailureFallsThroughToChatShimOnly(t *testing.T)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected shim fallback success, got %d: %s", rec.Code, rec.Body.String())
 	}
+	if rec.Header().Get("x-xrouter-responses-shim") != "true" {
+		t.Fatalf("expected shim marker header, got %q", rec.Header().Get("x-xrouter-responses-shim"))
+	}
 	if strings.Contains(strings.Join(calls, ","), "/responses:shim-model") {
 		t.Fatalf("shim-only target was called through native Responses path: %v", calls)
 	}
 	if !strings.Contains(rec.Body.String(), "shim ok") {
 		t.Fatalf("expected shim response body, got %s", rec.Body.String())
+	}
+}
+
+func TestResponsesNativeRetryableFailureWithStateDoesNotFallThroughToShim(t *testing.T) {
+	var calls []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		model := stringFromAny(body["model"])
+		calls = append(calls, r.URL.Path+":"+model)
+		switch {
+		case r.URL.Path == "/responses" && model == "native-model":
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "retry native"})
+		case r.URL.Path == "/chat/completions" && model == "shim-model":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"id":      "chatcmpl_1",
+				"object":  "chat.completion",
+				"created": 123,
+				"model":   "shim-model",
+				"choices": []any{map[string]any{"message": map[string]any{"role": "assistant", "content": "shim ok"}}},
+			})
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "unexpected call"})
+		}
+	}))
+	defer upstream.Close()
+
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"p": {BaseURL: upstream.URL, Supports: []string{"chat", "responses"}},
+		},
+		Targets: map[string]TargetConfig{
+			"native": {Provider: "p", Model: "native-model", Capabilities: CapabilityConfig{Responses: true}},
+			"shim":   {Provider: "p", Model: "shim-model"},
+		},
+		Routes: map[string]RouteConfig{
+			"xrouter/responses": {Type: "direct", Target: "native", Fallbacks: []string{"shim"}},
+		},
+	}
+	cfg.applyDefaults()
+	s := NewServer(cfg)
+
+	req := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(`{"model":"xrouter/responses","input":"hi","previous_response_id":"resp_123"}`))
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected native retryable status, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "retry native") {
+		t.Fatalf("expected native retryable body, got %s", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "unsupported_state") {
+		t.Fatalf("native retryable failure was rewritten as shim unsupported_state: %s", rec.Body.String())
+	}
+	if strings.Contains(strings.Join(calls, ","), "/chat/completions:shim-model") {
+		t.Fatalf("stateful Responses request must not fall through to chat shim: %v", calls)
 	}
 }
 

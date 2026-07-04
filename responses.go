@@ -11,6 +11,7 @@ import (
 
 func (s *Server) handleResponsesDirectLike(w http.ResponseWriter, r *http.Request, body map[string]any, decision RouteDecision) {
 	stream := getBool(body, "stream")
+	requiresNativeState := responsesRequiresNativeState(body)
 	var nativeTargets []string
 	var shimTargets []string
 	for _, name := range decision.TargetNames {
@@ -46,13 +47,17 @@ func (s *Server) handleResponsesDirectLike(w http.ResponseWriter, r *http.Reques
 			s.writeUpstreamResult(w, nd, result)
 			return
 		}
+		if requiresNativeState {
+			s.writeResponsesNativeFailure(w, nd, result)
+			return
+		}
 		// Retryable native failure can fall through to shim candidates.
 	}
 	if stream {
 		writeError(w, http.StatusBadRequest, "unsupported_streaming", "Responses shim does not support stream=true; use a native responses target or set stream=false")
 		return
 	}
-	if body["previous_response_id"] != nil || body["conversation"] != nil {
+	if requiresNativeState {
 		writeError(w, http.StatusBadRequest, "unsupported_state", "Responses shim cannot handle previous_response_id or conversation; select a native OpenAI Responses target")
 		return
 	}
@@ -84,7 +89,7 @@ func (s *Server) handleResponsesDirectLike(w http.ResponseWriter, r *http.Reques
 		TargetName: res.TargetName,
 		Target:     res.Target,
 		Status:     http.StatusOK,
-		Headers:    map[string]string{"Content-Type": "application/json"},
+		Headers:    map[string]string{"Content-Type": "application/json", "x-xrouter-responses-shim": "true"},
 		Body:       wrapped,
 		Duration:   res.Duration,
 	}
@@ -94,6 +99,22 @@ func (s *Server) handleResponsesDirectLike(w http.ResponseWriter, r *http.Reques
 		s.sticky.Set(sid, res.TargetName, time.Duration(decision.Route.StickyTTLSeconds)*time.Second)
 	}
 	s.writeUpstreamResult(w, decision, wrappedResult)
+}
+
+func responsesRequiresNativeState(body map[string]any) bool {
+	return body["previous_response_id"] != nil || body["conversation"] != nil
+}
+
+func (s *Server) writeResponsesNativeFailure(w http.ResponseWriter, decision RouteDecision, result UpstreamResult) {
+	if result.Err != nil && result.Status == 0 {
+		writeError(w, http.StatusBadGateway, "upstream_error", result.Err.Error())
+		return
+	}
+	if result.Status > 0 {
+		s.writeUpstreamResult(w, decision, result)
+		return
+	}
+	writeError(w, http.StatusBadGateway, "upstream_error", "all native Responses targets failed")
 }
 
 func responsesToChatBody(body map[string]any) (map[string]any, error) {

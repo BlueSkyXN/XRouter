@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -23,6 +25,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("load config: %v", err)
 	}
+	warnIfUnauthenticatedProviderCredentials(cfg, configuredAPIKeys(cfg.Auth))
 	srv := NewServer(cfg)
 	httpServer := &http.Server{
 		Addr:              cfg.Server.Listen,
@@ -57,4 +60,40 @@ func getenvDefault(k, d string) string {
 		return v
 	}
 	return d
+}
+
+func warnIfUnauthenticatedProviderCredentials(cfg Config, apiKeys map[string]struct{}) {
+	if len(apiKeys) > 0 {
+		return
+	}
+	providers := unauthenticatedProviderCredentialNames(cfg)
+	if len(providers) == 0 {
+		return
+	}
+	apiKeysEnv := strings.TrimSpace(cfg.Auth.APIKeysEnv)
+	if apiKeysEnv == "" {
+		apiKeysEnv = "auth.api_keys_env"
+	}
+	log.Printf("WARNING: provider credentials are loaded for %s but no XRouter API keys are configured; shared or public deployments should set auth.api_keys or %s", strings.Join(providers, ","), apiKeysEnv)
+}
+
+func unauthenticatedProviderCredentialNames(cfg Config) []string {
+	providers := make([]string, 0, len(cfg.Providers))
+	for name, provider := range cfg.Providers {
+		if providerHasLoadedAPIKey(provider) {
+			providers = append(providers, name)
+		}
+	}
+	sort.Strings(providers)
+	return providers
+}
+
+func providerHasLoadedAPIKey(provider ProviderConfig) bool {
+	if strings.TrimSpace(provider.APIKey) != "" {
+		return true
+	}
+	if strings.TrimSpace(provider.APIKeyEnv) == "" {
+		return false
+	}
+	return strings.TrimSpace(os.Getenv(provider.APIKeyEnv)) != ""
 }

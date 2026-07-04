@@ -55,7 +55,9 @@ The shim maps:
 
 The response is wrapped into a Responses-shaped object with `output_text` and `output` items. Text answers become an output message. Chat Completions `tool_calls` are preserved as Responses-style `function_call` output items so tool-only assistant messages are not dropped.
 
-Advanced hosted state semantics are not implemented by the shim.
+Shim responses include `x-xrouter-responses-shim: true`.
+
+Advanced hosted state semantics are not implemented by the shim. Requests containing `previous_response_id` or `conversation` require a native Responses target. If native Responses targets return retryable upstream failures for those stateful requests, XRouter preserves the native failure status/body instead of rewriting the request as a shim `unsupported_state` client error.
 
 ## Unknown model policy
 
