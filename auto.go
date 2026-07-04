@@ -39,6 +39,9 @@ func (s *Server) routeCandidates(route RouteConfig, body map[string]any, kind AP
 		if !targetCompatibleWithFeatures(t, features, kind) {
 			continue
 		}
+		if !targetSatisfiesRequiredKeywordRules(route.KeywordRules, t, name, features.Text) {
+			continue
+		}
 		filtered = append(filtered, name)
 	}
 	if len(filtered) == 0 {
@@ -189,31 +192,12 @@ func keywordRuleScore(rules []KeywordRule, t TargetConfig, targetName, text stri
 		return 0
 	}
 	text = strings.ToLower(text)
-	tagSet := map[string]struct{}{}
-	for _, tag := range t.Tags {
-		tagSet[strings.ToLower(strings.TrimSpace(tag))] = struct{}{}
-	}
 	score := 0.0
 	for _, rule := range rules {
 		if !ruleMatchesText(rule, text) {
 			continue
 		}
-		applies := len(rule.Targets) == 0 && len(rule.Tags) == 0
-		for _, name := range rule.Targets {
-			if strings.TrimSpace(name) == targetName {
-				applies = true
-				break
-			}
-		}
-		if !applies {
-			for _, tag := range rule.Tags {
-				if _, ok := tagSet[strings.ToLower(strings.TrimSpace(tag))]; ok {
-					applies = true
-					break
-				}
-			}
-		}
-		if !applies {
+		if !keywordRuleAppliesToTarget(rule, t, targetName) {
 			continue
 		}
 		boost := rule.Boost
@@ -223,6 +207,47 @@ func keywordRuleScore(rules []KeywordRule, t TargetConfig, targetName, text stri
 		score += boost - rule.Penalty
 	}
 	return score
+}
+
+func targetSatisfiesRequiredKeywordRules(rules []KeywordRule, t TargetConfig, targetName, text string) bool {
+	if len(rules) == 0 {
+		return true
+	}
+	text = strings.ToLower(text)
+	for _, rule := range rules {
+		if !rule.Require || !ruleMatchesText(rule, text) {
+			continue
+		}
+		if !keywordRuleHasTargetSelector(rule) || !keywordRuleAppliesToTarget(rule, t, targetName) {
+			return false
+		}
+	}
+	return true
+}
+
+func keywordRuleHasTargetSelector(rule KeywordRule) bool {
+	return len(uniqueStrings(rule.Targets)) > 0 || len(uniqueStrings(rule.Tags)) > 0
+}
+
+func keywordRuleAppliesToTarget(rule KeywordRule, t TargetConfig, targetName string) bool {
+	if !keywordRuleHasTargetSelector(rule) {
+		return true
+	}
+	for _, name := range rule.Targets {
+		if strings.TrimSpace(name) == targetName {
+			return true
+		}
+	}
+	tagSet := map[string]struct{}{}
+	for _, tag := range t.Tags {
+		tagSet[strings.ToLower(strings.TrimSpace(tag))] = struct{}{}
+	}
+	for _, tag := range rule.Tags {
+		if _, ok := tagSet[strings.ToLower(strings.TrimSpace(tag))]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func ruleMatchesText(rule KeywordRule, text string) bool {

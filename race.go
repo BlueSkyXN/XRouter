@@ -261,10 +261,20 @@ func selectRaceResult(attempts []raceAttempt, route RouteConfig, routeName strin
 		return sorted[i].Score > sorted[j].Score
 	})
 	winner := sorted[0]
+	found := false
 	for _, a := range sorted {
-		if a.Succeeded {
+		if a.Succeeded && !raceLooksDegraded(a.Metrics, route.Race) {
 			winner = a
+			found = true
 			break
+		}
+	}
+	if !found {
+		for _, a := range sorted {
+			if a.Succeeded {
+				winner = a
+				break
+			}
 		}
 	}
 	res := winner.Result

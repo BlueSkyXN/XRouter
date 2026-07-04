@@ -137,6 +137,55 @@ func TestSmartRouterRejectsWhenHardFiltersRemoveAllCandidates(t *testing.T) {
 	}
 }
 
+func TestRequiredKeywordRulesHardFilterCandidates(t *testing.T) {
+	s := testStrategyServer()
+	route := RouteConfig{
+		Type:       "auto",
+		Kind:       "auto",
+		Candidates: []string{"cheap", "smart"},
+		KeywordRules: []KeywordRule{
+			{Any: []string{"debug"}, Tags: []string{"code"}, Require: true},
+		},
+	}
+	body := map[string]any{"model": "xrouter/code-required", "messages": []any{map[string]any{"role": "user", "content": "debug this golang panic"}}}
+	r := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	controls, err := s.controlsFromRequest(r, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := s.routeCandidates(route, body, APIChat, "", r, controls)
+	if len(got) != 1 || got[0] != "smart" {
+		t.Fatalf("expected required code keyword rule to leave only smart target, got %v", got)
+	}
+}
+
+func TestJudgeCandidatesLimitJudgeScoringScope(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"choices": []any{map[string]any{"message": map[string]any{"content": `{"target":"cheap","scores":{"cheap":1,"smart":0.25}}`}}},
+		})
+	}))
+	defer upstream.Close()
+	cfg := Config{
+		Providers: map[string]ProviderConfig{"openai": {BaseURL: upstream.URL, Supports: []string{"chat"}}},
+		Targets: map[string]TargetConfig{
+			"cheap": {Provider: "openai", Model: "cheap-model"},
+			"smart": {Provider: "openai", Model: "smart-model"},
+			"judge": {Provider: "openai", Model: "judge-model"},
+		},
+	}
+	cfg.applyDefaults()
+	s := NewServer(cfg)
+	route := RouteConfig{Judge: JudgeConfig{Enabled: true, Target: "judge", Candidates: []string{"smart"}, TimeoutMS: 1000}}
+	scores := s.judgeRouterScores(httptest.NewRequest("POST", "/", nil), map[string]any{"messages": []any{map[string]any{"role": "user", "content": "debug"}}}, route, []string{"cheap", "smart"})
+	if _, ok := scores["cheap"]; ok {
+		t.Fatalf("judge.candidates should keep cheap out of judge scores, got %v", scores)
+	}
+	if scores["smart"] != 0.25 {
+		t.Fatalf("expected smart score from scoped judge result, got %v", scores)
+	}
+}
+
 func TestDirectAliasDoesNotRewritePrompt(t *testing.T) {
 	provider := ProviderConfig{Supports: []string{"chat"}}
 	target := TargetConfig{Provider: "openai", Model: "upstream-model"}

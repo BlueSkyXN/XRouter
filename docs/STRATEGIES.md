@@ -43,7 +43,7 @@ flowchart TD
   H --> I[Call upstream]
 ```
 
-The capability filters are hard gates. A request that requires tools, JSON output, or vision will not be routed to a target that lacks that capability; if all candidates are filtered out, routing fails.
+The capability filters are hard gates. A request that requires tools, JSON output, or vision will not be routed to a target that lacks that capability; if all candidates are filtered out, routing fails. Keyword rules are soft score adjustments unless `require: true` is set; matching required rules hard-filter candidates to the rule's `targets` or `tags`.
 
 ### Weighted score
 
@@ -111,7 +111,7 @@ The judge router is not the final answering model. It receives a compact route-s
 }
 ```
 
-The smart router treats judge scores as one weighted signal, not as an absolute command.
+The smart router treats judge scores as one weighted signal, not as an absolute command. If `judge.candidates` is configured, only that subset is sent to the judge and only that subset can receive judge-score boosts; other compatible candidates remain in the weighted router.
 
 ## MoV / MoA flows
 

@@ -203,9 +203,19 @@ Selects exactly one target using filters and scoring.
     "enabled": true,
     "weight": 1.5
   },
+  "keyword_rules": [
+    {
+      "name": "code-required",
+      "any": ["debug", "golang", "typescript"],
+      "tags": ["code"],
+      "require": true,
+      "boost": 0.12
+    }
+  ],
   "judge": {
     "enabled": false,
     "target": "judge-small",
+    "candidates": ["openai-smart", "or-sonnet"],
     "timeout_ms": 1200,
     "weight": 0.25
   }
@@ -214,7 +224,11 @@ Selects exactly one target using filters and scoring.
 
 Capability filters for tools, JSON output, and vision are hard filters. If every configured candidate is incompatible with the request, XRouter returns a route error instead of falling back to an incompatible target.
 
+Keyword rules are score adjustments by default. When a matching rule sets `require: true`, it becomes a hard target/tag gate: only candidates listed in `targets` or carrying one of the rule `tags` remain eligible. Startup validation rejects `require: true` rules that do not declare `targets` or `tags`.
+
 The smart router also folds recent in-memory target health into scoring. Repeated retryable failures temporarily demote a target behind other compatible candidates, while keeping it available as a later fallback.
+
+When `judge.candidates` is non-empty, the judge-router prompt and score map are limited to the intersection of the route candidates and that list. Other candidates remain eligible through normal weighted scoring, but they do not receive judge-score boosts.
 
 ### Prefix route
 

@@ -21,6 +21,13 @@ func (s *Server) judgeRouterScores(r *http.Request, body map[string]any, route R
 	if !route.Judge.Enabled || route.Judge.Target == "" || len(candidates) == 0 {
 		return out
 	}
+	judgedCandidates := candidates
+	if len(route.Judge.Candidates) > 0 {
+		judgedCandidates = intersectStringsPreserveOrder(candidates, route.Judge.Candidates)
+		if len(judgedCandidates) == 0 {
+			return out
+		}
+	}
 	ctx := context.Background()
 	if r != nil {
 		ctx = r.Context()
@@ -31,7 +38,7 @@ func (s *Server) judgeRouterScores(r *http.Request, body map[string]any, route R
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	judgeBody := buildJudgeRouterBody(body, route, candidates)
+	judgeBody := buildJudgeRouterBody(body, route, judgedCandidates)
 	res := s.callTargetBytes(ctx, route.Judge.Target, APIChat, judgeBody, r)
 	s.metrics.Record("judge_router", route.Judge.Target, res.Status, res.Duration)
 	if res.Err != nil || res.Status < 200 || res.Status >= 300 {
@@ -48,7 +55,7 @@ func (s *Server) judgeRouterScores(r *http.Request, body map[string]any, route R
 	var jd judgeDecision
 	if err := json.Unmarshal([]byte(extractJSONObject(text)), &jd); err != nil {
 		// Fallback: allow the judge to return a bare target name.
-		for _, c := range candidates {
+		for _, c := range judgedCandidates {
 			if strings.Contains(text, c) {
 				out[c] = 1
 				return out
@@ -57,17 +64,31 @@ func (s *Server) judgeRouterScores(r *http.Request, body map[string]any, route R
 		return out
 	}
 	if len(jd.Scores) > 0 {
-		for _, c := range candidates {
+		for _, c := range judgedCandidates {
 			out[c] = clamp01(jd.Scores[c])
 		}
 	}
-	if jd.Target != "" && stringInSlice(jd.Target, candidates) {
+	if jd.Target != "" && stringInSlice(jd.Target, judgedCandidates) {
 		conf := jd.Confidence
 		if conf <= 0 {
 			conf = 0.75
 		}
 		if out[jd.Target] < conf {
 			out[jd.Target] = clamp01(conf)
+		}
+	}
+	return out
+}
+
+func intersectStringsPreserveOrder(left, right []string) []string {
+	allowed := map[string]struct{}{}
+	for _, v := range uniqueStrings(right) {
+		allowed[v] = struct{}{}
+	}
+	out := make([]string, 0, len(left))
+	for _, v := range uniqueStrings(left) {
+		if _, ok := allowed[v]; ok {
+			out = append(out, v)
 		}
 	}
 	return out

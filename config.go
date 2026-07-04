@@ -126,12 +126,23 @@ func (c Config) Validate() error {
 			c.validateTargetRef(route.Judge.Target, ctx+".judge.target", &problems)
 			c.validateTargetRefs(route.Judge.Candidates, ctx+".judge.candidates", &problems)
 		}
+		c.validateKeywordRules(route.KeywordRules, ctx, &problems)
 		c.validateTargetRefs(route.Race.Targets, ctx+".race.targets", &problems)
 	}
 	if len(problems) > 0 {
 		return fmt.Errorf("invalid config: %s", strings.Join(problems, "; "))
 	}
 	return nil
+}
+
+func (c Config) validateKeywordRules(rules []KeywordRule, context string, problems *[]string) {
+	for i, rule := range rules {
+		ruleCtx := fmt.Sprintf("%s.keyword_rules[%d]", context, i)
+		if rule.Require && !keywordRuleHasTargetSelector(rule) {
+			*problems = append(*problems, fmt.Sprintf("%s require=true needs targets or tags", ruleCtx))
+		}
+		c.validateTargetRefs(rule.Targets, ruleCtx+".targets", problems)
+	}
 }
 
 func (c Config) validateTargetRefs(names []string, context string, problems *[]string) {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -45,6 +46,30 @@ func TestRaceBoundaryAwareSelection(t *testing.T) {
 	}
 	if res.TargetName != "b" {
 		t.Fatalf("expected non-boundary target b, got %s", res.TargetName)
+	}
+}
+
+func TestRaceSelectionPrefersNonDegradedSuccessOverHigherScore(t *testing.T) {
+	boundary := chatBodyForRace(strings.Repeat("boundary ", 8000), 516, 10000, "stop")
+	normal := chatBodyForRace("short normal answer", 900, 50, "stop")
+	cfg := defaultRaceConfig(RaceConfig{Selection: "boundary_aware", BoundaryPenalty: 100})
+	attempts := []raceAttempt{
+		{Index: 0, Target: "a", Result: UpstreamResult{TargetName: "a", Status: http.StatusOK, Body: boundary}, Succeeded: true},
+		{Index: 1, Target: "b", Result: UpstreamResult{TargetName: "b", Status: http.StatusOK, Body: normal}, Succeeded: true},
+	}
+	for i := range attempts {
+		attempts[i].Metrics = metricsFromResult(attempts[i].Result, cfg)
+		attempts[i].Score = raceScore(attempts[i], cfg)
+	}
+	if attempts[0].Score <= attempts[1].Score {
+		t.Fatalf("test setup expected degraded attempt to have higher raw score, got %+v", attempts)
+	}
+	res, err := selectRaceResult(attempts, RouteConfig{Race: cfg}, "test/race")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.TargetName != "b" {
+		t.Fatalf("expected non-degraded target b despite lower raw score, got %s", res.TargetName)
 	}
 }
 

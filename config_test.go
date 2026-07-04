@@ -122,3 +122,25 @@ func TestConfigValidationRejectsReservedMoVStages(t *testing.T) {
 		t.Fatal("expected reserved mov stages to fail validation")
 	}
 }
+
+func TestConfigValidationRejectsRequiredKeywordRuleWithoutSelector(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"p": {BaseURL: "http://example.invalid/v1", Supports: []string{"chat"}},
+		},
+		Targets: map[string]TargetConfig{
+			"t": {Provider: "p", Model: "m"},
+		},
+		Routes: map[string]RouteConfig{
+			"xrouter/auto": {
+				Type:         "auto",
+				Candidates:   []string{"t"},
+				KeywordRules: []KeywordRule{{Any: []string{"debug"}, Require: true}},
+			},
+		},
+	}
+	cfg.applyDefaults()
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected require=true keyword rule without targets or tags to fail validation")
+	}
+}

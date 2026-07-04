@@ -206,6 +206,7 @@
           "tags": [
             "code"
           ],
+          "require": true,
           "boost": 0.12
         },
         {
@@ -224,6 +225,10 @@
       "judge": {
         "enabled": false,
         "target": "judge-small",
+        "candidates": [
+          "openai-smart",
+          "or-sonnet"
+        ],
         "timeout_ms": 1200,
         "weight": 0.2
       }
@@ -256,6 +261,7 @@
           "tags": [
             "code"
           ],
+          "require": true,
           "boost": 0.2
         }
       ],
