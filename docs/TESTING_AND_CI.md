@@ -56,7 +56,7 @@ The workflow is:
 .github/workflows/ci.yml
 ```
 
-It runs one Go job:
+It runs a Go job:
 
 ```text
 checkout
@@ -67,6 +67,15 @@ go test ./...
 make build
 ./dist/xrouter -version
 upload dist/xrouter as xrouter-linux-amd64
+```
+
+It also runs a Docker build job after the Go job:
+
+```text
+checkout
+setup-qemu
+setup-buildx
+docker buildx build for linux/amd64 and linux/arm64 without pushing
 ```
 
 There is no Rust job and no Cargo toolchain dependency.
@@ -85,7 +94,7 @@ It runs for `v*` tags and manual dispatch against an existing tag. It:
 - builds archives for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, and windows/amd64
 - publishes SHA256SUMS
 - creates or updates the GitHub Release
-- publishes a GHCR image tagged with the release tag
+- publishes a multi-platform GHCR image tagged with the release tag
 
 See `docs/RELEASING.md` for the operator flow.
 

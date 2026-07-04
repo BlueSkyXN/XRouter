@@ -62,6 +62,8 @@ The workflow also publishes:
 ghcr.io/blueskyxn/xrouter:<tag>
 ```
 
+The container image is built for `linux/amd64` and `linux/arm64`, includes CA certificates for HTTPS upstream providers, and runs the gateway as a non-root user. PR CI builds the same Dockerfile without pushing so Dockerfile regressions are caught before tag-driven publication.
+
 ## Version metadata
 
 Release binaries embed:
