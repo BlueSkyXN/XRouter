@@ -7,8 +7,8 @@
     "objective": "quality",
     "candidates": ["openai-smart", "or-sonnet"],
     "multi_model": "auto",
-    "shadow_targets": ["or-cheap"],
-    "listener_targets": ["or-cheap"],
+    "shadow_targets": ["or-auto"],
+    "listener_targets": ["or-auto"],
     "include_listener_output": true,
     "session_id": "demo-session-001"
   }

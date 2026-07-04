@@ -9,6 +9,7 @@ ARG TARGETARCH
 COPY go.mod ./
 COPY *.go ./
 COPY config.example.json ./
+COPY examples ./examples
 RUN target_os="${TARGETOS:-$(go env GOOS)}"; \
     target_arch="${TARGETARCH:-$(go env GOARCH)}"; \
     go test ./... && \

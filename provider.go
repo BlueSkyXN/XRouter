@@ -176,6 +176,12 @@ func prepareBodyForTarget(body map[string]any, target TargetConfig, provider Pro
 	delete(up, internalProviderAPIKeysKey)
 	delete(up, "xrouter")
 	for k, v := range target.ExtraBody {
+		if strings.TrimSpace(k) == "" {
+			continue
+		}
+		if _, exists := up[k]; exists {
+			continue
+		}
 		up[k] = v
 	}
 	up["model"] = target.Model

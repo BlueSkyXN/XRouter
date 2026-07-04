@@ -1,5 +1,5 @@
 {
-  "model": "xrouter/auto-single",
+  "model": "xrouter/auto",
   "messages": [
     {"role": "user", "content": "Give me a 5-bullet explanation of XRouter auto routing."}
   ],

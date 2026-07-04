@@ -121,12 +121,19 @@ A target binds an internal target ID to a provider and upstream model.
       "json": true,
       "responses": true
     },
-    "tags": ["smart", "reasoning", "code"]
+    "tags": ["smart", "reasoning", "code"],
+    "extra_body": {
+      "provider": {
+        "order": ["openai"]
+      }
+    }
   }
 }
 ```
 
 Target scores are local policy hints, not provider claims. The smart router uses them as weighted inputs.
+
+`extra_body` is for provider-specific request extensions. It can add fields that are absent from the client request, but it does not override client-provided prompt, tool, response format, or generation fields. XRouter still removes provider-specific OpenRouter fields before forwarding to non-OpenRouter providers.
 
 ## Routing defaults
 

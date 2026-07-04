@@ -1,5 +1,5 @@
 {
-  "model": "xrouter/moa-balanced",
+  "model": "xrouter/mov/parallel-synth",
   "messages": [
     { "role": "user", "content": "Design a minimal but robust API gateway for LLM routing." }
   ]

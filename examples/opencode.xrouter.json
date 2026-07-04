@@ -15,17 +15,17 @@
         "xrouter/auto": {
           "name": "XRouter Auto"
         },
-        "xrouter/auto-single": {
-          "name": "XRouter Auto Single"
+        "gpt-4o-mini": {
+          "name": "XRouter Direct Alias"
         },
-        "xrouter/auto-observed": {
-          "name": "XRouter Auto Observed"
+        "xrouter/code/go": {
+          "name": "XRouter Code Router"
         },
-        "xrouter/moa-balanced": {
-          "name": "XRouter MoA Balanced"
+        "xrouter/mov/parallel-synth": {
+          "name": "XRouter Parallel Synthesis"
         },
-        "xrouter/fast": {
-          "name": "XRouter Fast"
+        "xrouter/race/boundary-guard": {
+          "name": "XRouter Boundary Guard Race"
         }
       }
     }

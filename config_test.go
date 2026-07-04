@@ -1,6 +1,14 @@
 package main
 
-import "testing"
+import (
+	"encoding/json"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+)
 
 func TestLoadConfigAcceptsExample(t *testing.T) {
 	if _, err := LoadConfig("config.example.json"); err != nil {
@@ -18,6 +26,74 @@ func TestExampleConfigKeepsSensitiveSurfacesClosed(t *testing.T) {
 	}
 	if cfg.RequestOverrides.AllowProviderKeyOverride {
 		t.Fatal("expected config.example.json to keep allow_provider_key_override=false")
+	}
+}
+
+func TestExamplesResolveAgainstExampleConfig(t *testing.T) {
+	cfg, err := LoadConfig("config.example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := NewServer(cfg)
+	files, err := filepath.Glob("examples/*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(files)
+	for _, path := range files {
+		path := path
+		base := filepath.Base(path)
+		t.Run(base, func(t *testing.T) {
+			if base == "opencode.xrouter.json" {
+				assertOpenCodeModelsResolve(t, s, path)
+				return
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s: %v", path, err)
+			}
+			var body map[string]any
+			if err := json.Unmarshal(data, &body); err != nil {
+				t.Fatalf("parse %s: %v", path, err)
+			}
+			model := stringFromAny(body["model"])
+			if model == "" {
+				return
+			}
+			kind := APIChat
+			if strings.HasPrefix(base, "responses.") {
+				kind = APIResponses
+			}
+			req := httptest.NewRequest("POST", "/", nil)
+			if _, err := s.resolve(model, body, kind, req); err != nil {
+				t.Fatalf("%s model %q does not resolve against config.example.json: %v", path, model, err)
+			}
+		})
+	}
+}
+
+func assertOpenCodeModelsResolve(t *testing.T, s *Server, path string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	provider, _ := cfg["provider"].(map[string]any)
+	xrouter, _ := provider["xrouter"].(map[string]any)
+	models, _ := xrouter["models"].(map[string]any)
+	if len(models) == 0 {
+		t.Fatalf("%s has no provider.xrouter.models entries", path)
+	}
+	for model := range models {
+		body := map[string]any{"model": model, "messages": []any{map[string]any{"role": "user", "content": "hi"}}}
+		req := httptest.NewRequest("POST", "/", nil)
+		if _, err := s.resolve(model, body, APIChat, req); err != nil {
+			t.Fatalf("%s OpenCode model %q does not resolve against config.example.json: %v", path, model, err)
+		}
 	}
 }
 

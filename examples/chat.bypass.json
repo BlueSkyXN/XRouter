@@ -5,6 +5,6 @@
   ],
   "xrouter": {
     "mode": "bypass",
-    "target": "or-cheap"
+    "target": "or-auto"
   }
 }

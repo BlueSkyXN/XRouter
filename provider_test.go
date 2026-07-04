@@ -167,6 +167,53 @@ func TestPrepareBodyTranslatesOnlyInternalOpenAIReasoningEffort(t *testing.T) {
 	}
 }
 
+func TestPrepareBodyExtraBodyDoesNotOverrideClientFields(t *testing.T) {
+	body := map[string]any{
+		"model":           "gpt-4o-mini",
+		"messages":        []any{map[string]any{"role": "user", "content": "keep me"}},
+		"tools":           []any{map[string]any{"type": "function", "function": map[string]any{"name": "lookup"}}},
+		"response_format": map[string]any{"type": "json_object"},
+		"temperature":     0.2,
+	}
+	target := TargetConfig{
+		Provider: "p",
+		Model:    "upstream-model",
+		ExtraBody: map[string]any{
+			"messages":        []any{map[string]any{"role": "system", "content": "rewrite"}},
+			"tools":           []any{},
+			"response_format": map[string]any{"type": "text"},
+			"temperature":     1.0,
+			"provider":        map[string]any{"order": []any{"openai"}},
+		},
+	}
+
+	up := prepareBodyForTarget(body, target, ProviderConfig{}, APIChat)
+
+	if up["model"] != "upstream-model" {
+		t.Fatalf("expected only model mapping to change, got %#v", up["model"])
+	}
+	if content := up["messages"].([]any)[0].(map[string]any)["content"]; content != "keep me" {
+		t.Fatalf("extra_body overrode messages: %#v", up["messages"])
+	}
+	if len(up["tools"].([]any)) != 1 {
+		t.Fatalf("extra_body overrode tools: %#v", up["tools"])
+	}
+	if up["response_format"].(map[string]any)["type"] != "json_object" {
+		t.Fatalf("extra_body overrode response_format: %#v", up["response_format"])
+	}
+	if up["temperature"] != 0.2 {
+		t.Fatalf("extra_body overrode temperature: %#v", up["temperature"])
+	}
+	if _, ok := up["provider"]; ok {
+		t.Fatalf("non-OpenRouter provider-specific body leaked upstream: %#v", up["provider"])
+	}
+
+	up = prepareBodyForTarget(body, TargetConfig{Provider: "openrouter", Model: "or-model", ExtraBody: target.ExtraBody}, ProviderConfig{}, APIChat)
+	if _, ok := up["provider"]; !ok {
+		t.Fatalf("expected new OpenRouter provider extension to be added when absent: %#v", up)
+	}
+}
+
 func TestListenerPromptRedactsRequestSecrets(t *testing.T) {
 	original := map[string]any{
 		"model":    "xrouter/t",
