@@ -94,6 +94,7 @@ jobs:
         run: |
           set -euo pipefail
           build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          build_commit="$(git rev-parse HEAD)"
           pkg="xrouter_${RELEASE_TAG}_${GOOS}_${GOARCH}"
           bin="xrouter"
           if [ "$GOOS" = "windows" ]; then
@@ -101,7 +102,7 @@ jobs:
           fi
           mkdir -p "dist/${pkg}"
           go build -trimpath \
-            -ldflags="-s -w -X main.version=${RELEASE_TAG} -X main.commit=${GITHUB_SHA} -X main.date=${build_date}" \
+            -ldflags="-s -w -X main.version=${RELEASE_TAG} -X main.commit=${build_commit} -X main.date=${build_date}" \
             -o "dist/${pkg}/${bin}" .
           cp README.md LICENSE config.example.json "dist/${pkg}/"
           cp -R docs examples "dist/${pkg}/"
@@ -161,8 +162,11 @@ jobs:
       - name: Build metadata
         id: meta_vars
         run: |
-          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
-          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          {
+            echo "image=ghcr.io/${GITHUB_REPOSITORY,,}"
+            echo "commit=$(git rev-parse HEAD)"
+            echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to GHCR
@@ -188,5 +192,5 @@ jobs:
           labels: ${{ steps.docker_meta.outputs.labels }}
           build-args: |
             VERSION=${{ env.RELEASE_TAG }}
-            COMMIT=${{ github.sha }}
+            COMMIT=${{ steps.meta_vars.outputs.commit }}
             DATE=${{ steps.meta_vars.outputs.date }}

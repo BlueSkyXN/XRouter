@@ -6,6 +6,7 @@ ARG COMMIT=unknown
 ARG DATE=unknown
 COPY go.mod ./
 COPY *.go ./
+COPY config.example.json ./
 RUN go test ./... && \
     CGO_ENABLED=0 go build -trimpath \
       -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
