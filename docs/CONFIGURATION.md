@@ -318,6 +318,8 @@ x-xrouter-session-id: tenant-a/thread-123
 
 `request_overrides.max_routing_targets` bounds request-provided `targets`, `candidates`, and `references` lists before routing or multi-model orchestration starts. The default is `32`. Oversized lists are rejected instead of being truncated silently. `max_shadow_targets` and `max_listener_targets` similarly bound request-provided side-channel work.
 
+Request-provided target references are resolved before dry-run output or upstream calls. Unknown or disallowed `target`, `targets`, `candidates`, `references`, `aggregator`, listener, judge, race, and fallback targets fail route resolution instead of producing a dry-run decision that would later fail at execution time. `mode: "passthrough"` is still governed by `routing.unknown_model_policy`; with the default `reject` policy it cannot forward an unknown model ID.
+
 Provider API keys can be supplied per request only if explicitly allowed:
 
 ```json

@@ -75,6 +75,92 @@ func TestRequestBypassTargetOverride(t *testing.T) {
 	}
 }
 
+func TestRequestOverrideTargetMustResolveBeforeDryRun(t *testing.T) {
+	s := testServerForRouting()
+	body := map[string]any{
+		"model":    "xrouter/auto",
+		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
+		"xrouter":  map[string]any{"mode": "bypass", "target": "missing-target", "dry_run": true},
+	}
+	r := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	if _, err := s.resolve("xrouter/auto", body, APIChat, r); err == nil || !strings.Contains(err.Error(), "missing-target") {
+		t.Fatalf("expected missing target override to fail before dry-run, got %v", err)
+	}
+}
+
+func TestRequestOverridePassthroughHonorsUnknownModelPolicy(t *testing.T) {
+	cfg := Config{
+		RequestOverrides: RequestOverrideConfig{Enabled: true},
+		Providers: map[string]ProviderConfig{
+			"openrouter": {BaseURL: "http://example.invalid/api/v1", Supports: []string{"chat"}},
+			"p":          {BaseURL: "http://example.invalid/v1", Supports: []string{"chat"}},
+		},
+		Targets: map[string]TargetConfig{
+			"cheap": {Provider: "p", Model: "cheap"},
+		},
+		Routes: map[string]RouteConfig{
+			"xrouter/auto": {Type: "direct", Target: "cheap"},
+		},
+	}
+	cfg.applyDefaults()
+	s := NewServer(cfg)
+	body := map[string]any{
+		"model":    "anthropic/not-configured",
+		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
+		"xrouter":  map[string]any{"route": "xrouter/auto", "mode": "passthrough"},
+	}
+	r := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	if _, err := s.resolve("anthropic/not-configured", body, APIChat, r); err == nil || !strings.Contains(err.Error(), "unknown_model_policy=\"reject\"") {
+		t.Fatalf("expected passthrough override to respect reject policy, got %v", err)
+	}
+
+	cfg.Routing.UnknownModelPolicy = "passthrough_openrouter"
+	cfg.applyDefaults()
+	s = NewServer(cfg)
+	decision, err := s.resolve("anthropic/not-configured", body, APIChat, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Route.Type != "direct" || len(decision.TargetNames) != 1 || decision.TargetNames[0] != "anthropic/not-configured" {
+		t.Fatalf("expected explicit passthrough target, got %+v", decision)
+	}
+	target, ok := s.targetByName(decision.TargetNames[0])
+	if !ok || target.Provider != "openrouter" {
+		t.Fatalf("expected passthrough through openrouter, got target=%+v ok=%v", target, ok)
+	}
+}
+
+func TestRequestOverrideFinalEscalatedRouteTargetsMustResolve(t *testing.T) {
+	s := testServerForRouting()
+	body := map[string]any{
+		"model":    "xrouter/auto",
+		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
+		"xrouter":  map[string]any{"multi_model": "always", "aggregator": "missing-aggregator", "references": []any{"cheap"}},
+	}
+	r := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	if _, err := s.resolve("xrouter/auto", body, APIChat, r); err == nil || !strings.Contains(err.Error(), "missing-aggregator") {
+		t.Fatalf("expected escalated MoA override target validation error, got %v", err)
+	}
+}
+
+func TestRequestOverrideSideChannelTargetsMustResolve(t *testing.T) {
+	s := testServerForRouting()
+	body := map[string]any{
+		"model":    "xrouter/auto-single",
+		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
+		"xrouter":  map[string]any{"shadow_targets": []any{"missing-shadow"}},
+	}
+	r := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	if _, err := s.resolve("xrouter/auto-single", body, APIChat, r); err == nil || !strings.Contains(err.Error(), "missing-shadow") {
+		t.Fatalf("expected shadow target validation error, got %v", err)
+	}
+
+	body["xrouter"] = map[string]any{"listener_targets": []any{"missing-listener"}}
+	if _, err := s.resolve("xrouter/auto-single", body, APIChat, r); err == nil || !strings.Contains(err.Error(), "missing-listener") {
+		t.Fatalf("expected listener target validation error, got %v", err)
+	}
+}
+
 func TestRequestOverrideRoutingTargetsLimitRejectsLargeLists(t *testing.T) {
 	cfg := Config{
 		RequestOverrides: RequestOverrideConfig{Enabled: true, MaxRoutingTargets: 2},

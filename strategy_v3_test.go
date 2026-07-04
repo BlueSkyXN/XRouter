@@ -106,6 +106,18 @@ func TestVisionDetectionUsesStructuredContentOnly(t *testing.T) {
 	}
 }
 
+func TestToolChoiceNoneDoesNotRequireToolCapability(t *testing.T) {
+	if requestNeedsTools(map[string]any{"tool_choice": "none"}) {
+		t.Fatal("tool_choice none should not require tool-capable targets")
+	}
+	if !requestNeedsTools(map[string]any{"tool_choice": "required"}) {
+		t.Fatal("tool_choice required should require tool-capable targets")
+	}
+	if !requestNeedsTools(map[string]any{"tools": []any{map[string]any{"type": "function"}}}) {
+		t.Fatal("tools list should require tool-capable targets")
+	}
+}
+
 func TestSmartRouterRejectsWhenHardFiltersRemoveAllCandidates(t *testing.T) {
 	s := testStrategyServer()
 	cheap := s.cfg.Targets["cheap"]

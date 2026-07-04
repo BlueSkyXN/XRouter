@@ -346,7 +346,22 @@ func requestNeedsTools(body map[string]any) bool {
 	if tools, ok := body["tools"].([]any); ok && len(tools) > 0 {
 		return true
 	}
-	return body["tool_choice"] != nil
+	if choice, ok := body["tool_choice"]; ok {
+		return toolChoiceRequiresTools(choice)
+	}
+	return false
+}
+
+func toolChoiceRequiresTools(choice any) bool {
+	switch v := choice.(type) {
+	case nil:
+		return false
+	case string:
+		s := strings.ToLower(strings.TrimSpace(v))
+		return s != "" && s != "none"
+	default:
+		return true
+	}
 }
 
 func requestNeedsJSON(body map[string]any) bool {

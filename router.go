@@ -91,10 +91,16 @@ func (s *Server) resolve(model string, body map[string]any, kind APIKind, r *htt
 	complexity := estimateComplexity(body, kind)
 
 	if controls.Target != "" && (controls.Mode == "" || controls.Mode == "direct" || controls.Mode == "bypass") {
+		if err := s.validateRuntimeTargetRefs([]string{controls.Target}, "request override target"); err != nil {
+			return RouteDecision{}, err
+		}
 		route := RouteConfig{Type: "direct", Kind: "direct", Target: controls.Target, MultiModel: "never", StickyTTLSeconds: 300}
 		return RouteDecision{PublicModel: model, RouteName: lookupOrModel(controls.Route, model), Route: route, TargetNames: []string{controls.Target}, IsVirtual: true, Controls: controls, Complexity: complexity}, nil
 	}
 	if len(controls.Targets) > 0 && (controls.Mode == "" || controls.Mode == "direct" || controls.Mode == "bypass") {
+		if err := s.validateRuntimeTargetRefs(controls.Targets, "request override targets"); err != nil {
+			return RouteDecision{}, err
+		}
 		route := RouteConfig{Type: "direct", Kind: "direct", Target: controls.Targets[0], MultiModel: "never", StickyTTLSeconds: 300}
 		return RouteDecision{PublicModel: model, RouteName: lookupOrModel(controls.Route, model), Route: route, TargetNames: uniqueStrings(controls.Targets), IsVirtual: true, Controls: controls, Complexity: complexity}, nil
 	}
@@ -189,6 +195,12 @@ func (s *Server) materializeRouteDecision(model, routeName string, configured Ro
 	route.Type = normalizeRouteKind(route.Type)
 	route.Kind = route.Type
 	decision := RouteDecision{PublicModel: model, RouteName: routeName, Route: route, IsVirtual: true, Controls: controls, Complexity: complexity}
+	if err := s.validateControlsRuntimeTargetRefs(controls); err != nil {
+		return decision, err
+	}
+	if err := s.validateRouteRuntimeTargetRefs(routeName, route); err != nil {
+		return decision, err
+	}
 	switch route.Type {
 	case "direct":
 		if route.Target == "" {
@@ -207,6 +219,9 @@ func (s *Server) materializeRouteDecision(model, routeName string, configured Ro
 				return decision, err
 			}
 			if moaRoute.Type == "moa" || moaRoute.Type == "mov" {
+				if err := s.validateRouteRuntimeTargetRefs(rn, moaRoute); err != nil {
+					return decision, err
+				}
 				decision.Route = moaRoute
 				decision.RouteName = rn
 				if moaRoute.Type == "mov" {
@@ -231,6 +246,9 @@ func (s *Server) materializeRouteDecision(model, routeName string, configured Ro
 		decision.Route = route
 		decision.TargetNames = movPrimaryTargets(route)
 	case "passthrough":
+		if _, ok := s.targetByName(model); !ok {
+			return decision, fmt.Errorf("passthrough route %q cannot target model %q under unknown_model_policy=%q", routeName, model, normalizeUnknownModelPolicy(s.cfg.Routing.UnknownModelPolicy))
+		}
 		decision.Route = RouteConfig{Type: "direct", Kind: "direct", Target: model, MultiModel: "never", StickyTTLSeconds: 300}
 		decision.TargetNames = []string{model}
 	default:
@@ -241,6 +259,67 @@ func (s *Server) materializeRouteDecision(model, routeName string, configured Ro
 		return decision, fmt.Errorf("route %q has no usable candidates", routeName)
 	}
 	return decision, nil
+}
+
+func (s *Server) validateControlsRuntimeTargetRefs(controls XRouterControls) error {
+	checks := []struct {
+		names   []string
+		context string
+	}{
+		{controls.ShadowTargets, "request override shadow_targets"},
+		{controls.ListenerTargets, "request override listener_targets"},
+	}
+	for _, check := range checks {
+		if err := s.validateRuntimeTargetRefs(check.names, check.context); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Server) validateRouteRuntimeTargetRefs(routeName string, route RouteConfig) error {
+	if err := s.validateRuntimeTargetRefs([]string{route.Target}, fmt.Sprintf("route %q target", routeName)); err != nil {
+		return err
+	}
+	checks := []struct {
+		names   []string
+		context string
+	}{
+		{route.Candidates, fmt.Sprintf("route %q candidates", routeName)},
+		{route.Fallbacks, fmt.Sprintf("route %q fallbacks", routeName)},
+		{route.References, fmt.Sprintf("route %q references", routeName)},
+		{[]string{route.Aggregator}, fmt.Sprintf("route %q aggregator", routeName)},
+		{route.ShadowTargets, fmt.Sprintf("route %q shadow_targets", routeName)},
+		{route.Race.Targets, fmt.Sprintf("route %q race.targets", routeName)},
+	}
+	for _, check := range checks {
+		if err := s.validateRuntimeTargetRefs(check.names, check.context); err != nil {
+			return err
+		}
+	}
+	if route.Judge.Enabled {
+		if err := s.validateRuntimeTargetRefs([]string{route.Judge.Target}, fmt.Sprintf("route %q judge.target", routeName)); err != nil {
+			return err
+		}
+		if err := s.validateRuntimeTargetRefs(route.Judge.Candidates, fmt.Sprintf("route %q judge.candidates", routeName)); err != nil {
+			return err
+		}
+	}
+	for i, listener := range route.SerialListeners {
+		if err := s.validateRuntimeTargetRefs([]string{listener.Target}, fmt.Sprintf("route %q serial_listeners[%d].target", routeName, i)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Server) validateRuntimeTargetRefs(names []string, context string) error {
+	for _, name := range uniqueStrings(names) {
+		if _, ok := s.targetByName(name); !ok {
+			return fmt.Errorf("%s references unknown or disallowed target %q", context, name)
+		}
+	}
+	return nil
 }
 
 func lookupOrModel(lookup, model string) string {
