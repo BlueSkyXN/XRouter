@@ -72,6 +72,7 @@ Recommended production config posture:
 | `server.debug` | Keep `false` unless the debug endpoint is intentionally protected and needed. |
 | `routing.unknown_model_policy` | Keep `reject` unless passthrough is an explicit product decision. |
 | `prefix_cache.hash_salt` | Use a high-entropy deployment-specific value when stable prefix hash keys are required. |
+| Rate limiting | Enforce per-IP or per-key limits in the fronting proxy, load balancer, or platform gateway. |
 
 ## Docker
 
@@ -89,6 +90,17 @@ docker run --rm -p 8080:8080 \
   -e OPENAI_API_KEY=$OPENAI_API_KEY \
   -e OPENROUTER_API_KEY=$OPENROUTER_API_KEY \
   xrouter:go
+```
+
+The image uses `ENTRYPOINT ["/app/xrouter"]` and a default `CMD ["-config", "/app/config.example.json"]`. Override the config by passing normal CLI args after the image name:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -v "$PWD/config.local.json:/app/config.local.json:ro" \
+  -e XROUTER_API_KEYS=$XROUTER_API_KEYS \
+  -e OPENAI_API_KEY=$OPENAI_API_KEY \
+  -e OPENROUTER_API_KEY=$OPENROUTER_API_KEY \
+  xrouter:go -config /app/config.local.json
 ```
 
 The release workflow publishes `ghcr.io/blueskyxn/xrouter:<tag>` only for tag-driven releases. PR and branch CI build Docker images for validation but do not publish them.
@@ -116,6 +128,14 @@ curl -i http://127.0.0.1:8080/v1/chat/completions \
   -H 'Authorization: Bearer team-key-1' \
   -d @examples/chat.smart-router-dry-run.json
 ```
+
+Automated non-live smoke:
+
+```bash
+make smoke
+```
+
+This starts a temporary localhost gateway with a temporary `smoke-key`, checks auth gating, `/healthz`, `/v1/models`, smart-router dry-run, unknown-model rejection, and debug prefix-cache access. It does not require provider credentials and does not call upstream providers.
 
 For real upstream calls, use non-dry-run examples only after provider keys are present and the target provider is expected to be reachable.
 
@@ -154,10 +174,13 @@ Run the normal local gate before publishing a deployment artifact:
 
 ```bash
 gofmt -l ./*.go
+scripts/check-docs.sh
 go vet ./...
 go test ./...
+go test -race -count=1 ./...
 make build
 ./dist/xrouter -version
+scripts/smoke-local.sh
 ```
 
 For release packaging changes, also run:

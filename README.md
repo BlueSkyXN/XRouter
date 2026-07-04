@@ -57,10 +57,13 @@ Provider credentials 应优先通过环境变量注入，例如 `OPENAI_API_KEY`
 ├── Dockerfile
 ├── Makefile
 ├── AGENTS.md                     # 中文 Codex repo-local capability/router
+├── scripts/
+│   ├── check-docs.sh              # docs/examples/workflow contract checks
+│   └── smoke-local.sh             # non-live local HTTP smoke test
 ├── .github/
 │   ├── AGENTS.md                 # CI/release/GHCR guardrail
 │   └── workflows/
-│       ├── ci.yml                # Go lint/test/build workflow
+│       ├── ci.yml                # lint/test/race/smoke/package/Docker workflow
 │       └── release.yml           # tag/manual release packaging workflow
 ├── docs/
 │   ├── README.md
@@ -115,10 +118,13 @@ go run . -config config.local.json
 
 ```bash
 make fmt
+make check-docs
 make vet
 make test
+make race
 make build
 ./dist/xrouter -version
+make smoke
 ```
 
 构建后的本机 binary 位于：
@@ -135,6 +141,17 @@ docker run --rm -p 8080:8080 \
   -e OPENAI_API_KEY=$OPENAI_API_KEY \
   -e OPENROUTER_API_KEY=$OPENROUTER_API_KEY \
   xrouter:go
+```
+
+The image defaults to `/app/config.example.json`. To use a mounted config, pass normal CLI args after the image name:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -v "$PWD/config.local.json:/app/config.local.json:ro" \
+  -e XROUTER_API_KEYS=$XROUTER_API_KEYS \
+  -e OPENAI_API_KEY=$OPENAI_API_KEY \
+  -e OPENROUTER_API_KEY=$OPENROUTER_API_KEY \
+  xrouter:go -config /app/config.local.json
 ```
 
 ## 生产部署安全基线
@@ -162,17 +179,22 @@ Authorization: Bearer team-key-1
 `.github/workflows/ci.yml` 在 push / PR 上执行：
 
 ```text
-gofmt check
-go vet ./...
-go test ./...
-make build
-./dist/xrouter -version
-upload dist/xrouter as xrouter-linux-amd64
+actionlint for workflow syntax and shell issues
+scripts/check-docs.sh for docs/examples/workflow contract checks
+gofmt check, go vet ./..., go test ./...
+go test -race -count=1 ./...
+make build and ./dist/xrouter -version
+scripts/smoke-local.sh non-live HTTP smoke
+make release-snapshot VERSION=v0.0.0-ci
+Docker buildx for linux/amd64 and linux/arm64 without pushing
+upload binary and release snapshot artifacts
 ```
 
 `.github/workflows/release.yml` 在 `v*` tag 或手动 dispatch 时执行 release packaging：
 
 ```text
+docs/examples contract, vet, unit tests, race tests
+build/version smoke and non-live local smoke
 linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64 archives
 SHA256SUMS
 GitHub Release assets
@@ -260,12 +282,15 @@ Canonical runnable config 是 `config.example.json`。启用 request-level overr
 
 ```text
 gofmt -l ./*.go
+scripts/check-docs.sh
 make vet
 go test ./...
+go test -race -count=1 ./...
 actionlint
 make release-snapshot VERSION=v0.0.0-local
 make build
 ./dist/xrouter -version
+scripts/smoke-local.sh
 git diff --check
 ```
 

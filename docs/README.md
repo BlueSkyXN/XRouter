@@ -49,6 +49,7 @@ Local or generated history belongs in ignored `local/` material, not in public d
 For docs-only PRs, run at least:
 
 ```bash
+scripts/check-docs.sh
 git diff --check
 ```
 

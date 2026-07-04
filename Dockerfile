@@ -34,4 +34,5 @@ COPY --from=build /out/xrouter /app/xrouter
 COPY config.example.json /app/config.example.json
 USER xrouter
 EXPOSE 8080
-ENTRYPOINT ["/app/xrouter", "-config", "/app/config.example.json"]
+ENTRYPOINT ["/app/xrouter"]
+CMD ["-config", "/app/config.example.json"]
