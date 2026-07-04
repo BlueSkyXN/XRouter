@@ -932,7 +932,7 @@ multi_model:
 | 6 | `map_reduce_specialists_v1` | planner 拆任务，specialists 处理，reducer 汇总 | 是 | 大任务、仓库分析、多领域问题 |
 | 7 | `verify_then_escalate_v1` | 单模型先答，verifier 判定是否升级 | 条件是 | 成本敏感、质量兜底 |
 | 8 | `cascade_budget_v1` | cheap -> mid -> strong 预算阶梯 | 条件是 | 大流量生产、成本控制 |
-| 9 | `dual_path_tool_acting_v1` | acting model 负责工具；reviewer 检查；acting final | 是 | 工具调用、agent 工作流 |
+| 9 | `dual_path_tool_acting_v1` | acting model 负责工具；可用 serial listener 旁路检查 | 否，对用户不是 | 工具调用、agent 工作流 |
 | 10 | `shadow_evaluation_v1` | 主路由返回；旁路模型只评测/记录 | 否，对用户不是 | 新模型评估、路由训练数据 |
 
 ---
@@ -1278,20 +1278,18 @@ flowchart TD
 flowchart TD
     A[User request with tools] --> B[Acting model plans/tool-calls]
     B --> C[Tool execution]
-    C --> D[Acting model draft final]
-    D --> E[Reviewer model checks final]
-    E --> F{Need revision?}
-    F -- no --> G[Return acting final]
-    F -- yes --> H[Acting model revises]
-    H --> I[Final answer]
+    C --> D[Acting model final]
+    D --> E[Return acting final]
+    D -. optional serial_listener .-> F[Reviewer-like side-channel check]
+    F -. telemetry / optional debug metadata .-> G[Operations feedback]
 ```
 
 ### 语义
 
 ```text
 只有 acting model 能调用工具。
-reviewer 不能直接调用工具，只能指出问题。
-最终仍由 acting model 输出，保证工具调用链一致。
+当前实现中 reviewer-like 检查通过 serial_listeners 旁路运行，不内联改写返回给用户的答案。
+最终由 acting model 输出，保证工具调用链一致。
 ```
 
 ### 适用
@@ -1299,7 +1297,7 @@ reviewer 不能直接调用工具，只能指出问题。
 ```text
 agent 工作流
 需要工具调用一致性
-需要 reviewer 但不想让多个模型乱发 tool_call
+需要 reviewer-like 旁路观测但不想让多个模型乱发 tool_call
 ```
 
 ---

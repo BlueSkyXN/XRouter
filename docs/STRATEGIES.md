@@ -199,7 +199,7 @@ The cascade gate uses observable response signals only: HTTP success, incomplete
 
 ### 9. Dual-path tool acting
 
-One model acts and can use tools; another reviews the primary answer.
+One model acts and can use tools. Optional `serial_listeners` can run reviewer-like side-channel checks after the primary answer; they do not revise the returned answer inline.
 
 Use for: agentic tasks where tool execution should remain controlled.
 
